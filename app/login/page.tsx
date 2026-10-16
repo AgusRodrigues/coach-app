@@ -1,12 +1,29 @@
+import { Suspense } from "react";
 import { login, signup } from "./actions";
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string; message?: string }>;
-}) {
+type Params = Promise<{ error?: string; message?: string }>;
+
+// Lee searchParams dentro de Suspense (requisito de Next.js con Cache Components)
+async function Alerts({ searchParams }: { searchParams: Params }) {
   const { error, message } = await searchParams;
 
+  return (
+    <>
+      {error && (
+        <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p className="rounded-lg bg-emerald-950 p-3 text-sm text-emerald-300">
+          {message}
+        </p>
+      )}
+    </>
+  );
+}
+
+export default function LoginPage({ searchParams }: { searchParams: Params }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-4">
       <form className="w-full max-w-sm space-y-4 rounded-2xl bg-neutral-900 p-6 text-neutral-100">
@@ -15,16 +32,9 @@ export default async function LoginPage({
           Ingresá o creá tu cuenta para continuar.
         </p>
 
-        {error && (
-          <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">
-            {error}
-          </p>
-        )}
-        {message && (
-          <p className="rounded-lg bg-emerald-950 p-3 text-sm text-emerald-300">
-            {message}
-          </p>
-        )}
+        <Suspense fallback={null}>
+          <Alerts searchParams={searchParams} />
+        </Suspense>
 
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm">
