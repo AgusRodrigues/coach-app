@@ -65,6 +65,13 @@ export function shortDate(iso: string): string {
   })
 }
 
+// Dias entre dos fechas ISO (to - from). Ej: daysBetween('2026-10-10', '2026-10-17') = 7
+export function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86400000
+  )
+}
+
 // Fecha + hora locales de Buenos Aires -> timestamp con zona horaria
 export function toTimestamp(date: string, time: string): string {
   return `${date}T${time}:00${OFFSET}`

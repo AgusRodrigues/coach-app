@@ -30,6 +30,13 @@ async function UserInfo() {
     .eq("checkin_date", todayISO())
     .maybeSingle();
 
+  // Molestias activas (sin fecha de resolucion)
+  const { count: activePain } = await supabase
+    .from("pain_reports")
+    .select("id", { count: "exact", head: true })
+    .is("resolved_on", null);
+  const painCount = activePain ?? 0;
+
   return (
     <>
       <h1 className="text-2xl font-semibold">Sesión iniciada</h1>
@@ -74,6 +81,19 @@ async function UserInfo() {
         className="block rounded-lg bg-white p-3 text-center font-medium text-black"
       >
         Progreso
+      </Link>
+
+      <Link
+        href="/molestias"
+        className={`block rounded-lg p-3 text-center font-medium ${
+          painCount > 0
+            ? "bg-amber-200 text-black"
+            : "border border-neutral-600"
+        }`}
+      >
+        {painCount > 0
+          ? `Molestias (${painCount} ${painCount === 1 ? "activa" : "activas"})`
+          : "Molestias"}
       </Link>
 
       <Link

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { isoDateInTZ, mondayOf } from '@/lib/dates'
+import { daysBetween, isoDateInTZ, mondayOf } from '@/lib/dates'
 import { parseTimeToCs } from '@/lib/time'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -326,6 +326,7 @@ export async function saveSession(formData: FormData) {
   // Molestia (opcional): solo si se eligio una zona
   const zone = String(formData.get('pain_zone') ?? '')
   let painWarning = false
+  let painUpdated = false
 
   if (zone) {
     const painType = String(formData.get('pain_type') ?? '')
@@ -340,22 +341,55 @@ export async function saveSession(formData: FormData) {
       )
     }
 
-    const { error: painError } = await supabase.from('pain_reports').insert({
-      session_id: session!.id,
-      zone_code: zone,
-      pain_type: painType,
-      intensity,
-      reported_on: eventDate,
-    })
+    // ¿Ya hay una molestia activa en esa zona? Si la hay, es la misma: se actualiza
+    // su estado actual (tipo e intensidad) en lugar de crear un duplicado.
+    const { data: activeInZone } = await supabase
+      .from('pain_reports')
+      .select('id, reported_on')
+      .eq('zone_code', zone)
+      .is('resolved_on', null)
+      .order('reported_on', { ascending: true })
+      .limit(1)
 
-    if (painError) {
-      redirect(
-        `/calendario?semana=${week}&error=` +
-          encodeURIComponent('La sesión se guardó, pero no se pudo guardar la molestia.')
-      )
+    const existingPain = activeInZone?.[0]
+    let daysActive = 0
+
+    if (existingPain) {
+      const { error: painError } = await supabase
+        .from('pain_reports')
+        .update({ pain_type: painType, intensity })
+        .eq('id', existingPain.id)
+
+      if (painError) {
+        redirect(
+          `/calendario?semana=${week}&error=` +
+            encodeURIComponent(
+              'La sesión se guardó, pero no se pudo actualizar la molestia.'
+            )
+        )
+      }
+
+      painUpdated = true
+      daysActive = Math.max(0, daysBetween(existingPain.reported_on, eventDate))
+    } else {
+      const { error: painError } = await supabase.from('pain_reports').insert({
+        session_id: session!.id,
+        zone_code: zone,
+        pain_type: painType,
+        intensity,
+        reported_on: eventDate,
+      })
+
+      if (painError) {
+        redirect(
+          `/calendario?semana=${week}&error=` +
+            encodeURIComponent('La sesión se guardó, pero no se pudo guardar la molestia.')
+        )
+      }
     }
 
-    painWarning = painType === 'agudo' || (intensity ?? 0) >= 6
+    // Aviso: dolor agudo, intensidad alta, o una molestia que ya lleva una semana o mas
+    painWarning = painType === 'agudo' || (intensity ?? 0) >= 6 || daysActive >= 7
   }
 
   revalidatePath('/calendario')
@@ -369,6 +403,9 @@ export async function saveSession(formData: FormData) {
     message += ` con ${gymExercises.length} ${gymExercises.length === 1 ? 'ejercicio' : 'ejercicios'}`
   }
   message += '.'
+  if (painUpdated) {
+    message += ' Esa molestia ya estaba activa: se actualizó en vez de crear otra.'
+  }
   if (painWarning) {
     message +=
       ' Si la molestia es aguda o persiste, conviene que la evalúe un profesional antes de seguir con velocidad.'
