@@ -70,6 +70,13 @@ async function UserInfo() {
       </Link>
 
       <Link
+        href="/progreso"
+        className="block rounded-lg bg-white p-3 text-center font-medium text-black"
+      >
+        Progreso
+      </Link>
+
+      <Link
         href="/perfil"
         className="block rounded-lg border border-neutral-600 p-3 text-center font-medium"
       >
