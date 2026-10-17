@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { todayISO } from "@/lib/dates";
 import { logout } from "./login/actions";
 
 // Lee las cookies de sesion dentro de Suspense (requisito de Next.js con Cache Components)
@@ -22,6 +23,13 @@ async function UserInfo() {
     .select("*")
     .maybeSingle();
 
+  // Check-in de hoy: hecho o pendiente (RLS: solo ve los propios)
+  const { data: todayCheckin } = await supabase
+    .from("daily_checkins")
+    .select("id")
+    .eq("checkin_date", todayISO())
+    .maybeSingle();
+
   return (
     <>
       <h1 className="text-2xl font-semibold">Sesión iniciada</h1>
@@ -37,6 +45,22 @@ async function UserInfo() {
           </pre>
         )}
       </div>
+
+      {todayCheckin ? (
+        <Link
+          href="/checkin"
+          className="block rounded-lg border border-emerald-700 p-3 text-center font-medium text-emerald-300"
+        >
+          ✓ Check-in de hoy hecho (editar)
+        </Link>
+      ) : (
+        <Link
+          href="/checkin"
+          className="block rounded-lg bg-amber-200 p-3 text-center font-medium text-black"
+        >
+          Check-in de la mañana
+        </Link>
+      )}
 
       <Link
         href="/calendario"

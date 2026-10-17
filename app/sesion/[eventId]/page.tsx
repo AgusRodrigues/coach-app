@@ -5,6 +5,9 @@ import { connection } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { dayLabel, isoDateInTZ, mondayOf, timeInTZ } from "@/lib/dates";
 import { saveSession } from "../actions";
+import TrackEfforts from "./TrackEfforts";
+import GymEditor from "./GymEditor";
+import { loadGymHistory } from "@/lib/gym-history";
 
 type Params = Promise<{ eventId: string }>;
 type Search = Promise<{ error?: string }>;
@@ -63,6 +66,21 @@ async function SessionForm({
     .from("body_zones")
     .select("code, label")
     .order("label");
+
+  // Para sesiones de pista: precargar la distancia de la ultima repeticion registrada
+  let lastDistance = 60;
+  if (event.kind === "track") {
+    const { data: lastEffort } = await supabase
+      .from("track_efforts")
+      .select("distance_m")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastEffort?.distance_m) lastDistance = lastEffort.distance_m;
+  }
+
+  // Para sesiones de gimnasio: ultimo registro de cada dia de rutina y de cada ejercicio
+  const gym = event.kind === "gym" ? await loadGymHistory(supabase) : null;
 
   const date = isoDateInTZ(event.starts_at);
   const plannedMinutes = Math.max(
@@ -157,6 +175,56 @@ async function SessionForm({
             Viene del calendario. Cambialo si fue distinto.
           </span>
         </label>
+
+        {/* Repeticiones de pista (solo en sesiones de pista) */}
+        {event.kind === "track" && (
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium">Repeticiones (opcional)</h3>
+
+            <TrackEfforts defaultDistance={lastDistance} />
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1 text-xs text-neutral-400">
+                <span>Salida</span>
+                <select
+                  name="start_type"
+                  defaultValue=""
+                  className={inputClass}
+                >
+                  <option value="">Sin especificar</option>
+                  <option value="tacos">Con tacos</option>
+                  <option value="parado">Parado</option>
+                  <option value="lanzado">Lanzado</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-xs text-neutral-400">
+                <span>Superficie</span>
+                <input
+                  name="surface"
+                  placeholder="ej: sintética"
+                  className={inputClass}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-neutral-500">
+              Las filas sin tiempo se ignoran. Salida y superficie se aplican a
+              todas las repeticiones.
+            </p>
+          </section>
+        )}
+
+        {/* Rutina de gimnasio (solo en sesiones de gimnasio) */}
+        {gym && (
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium">Rutina (opcional)</h3>
+            <GymEditor
+              days={gym.days}
+              catalog={gym.catalog}
+              lastByExercise={gym.lastByExercise}
+              suggestedDay={gym.suggestedDay}
+            />
+          </section>
+        )}
 
         {/* Molestia */}
         <details className="rounded-xl bg-neutral-900 p-4">
