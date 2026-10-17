@@ -84,6 +84,13 @@ async function UserInfo() {
       </Link>
 
       <Link
+        href="/competencias"
+        className="block rounded-lg border border-neutral-600 p-3 text-center font-medium"
+      >
+        Competencias
+      </Link>
+
+      <Link
         href="/molestias"
         className={`block rounded-lg p-3 text-center font-medium ${
           painCount > 0

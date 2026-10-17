@@ -62,6 +62,21 @@ async function Week({ searchParams }: { searchParams: Params }) {
 
   const events = (data ?? []) as CalEvent[];
 
+  // Competencias de la semana (solo lectura: se cargan desde la seccion Competencias)
+  const { data: compData } = await supabase
+    .from("competitions")
+    .select("id, name, discipline, importance, event_date")
+    .gte("event_date", monday)
+    .lt("event_date", nextMonday)
+    .order("event_date");
+  const competitions = (compData ?? []) as {
+    id: string;
+    name: string;
+    discipline: string;
+    importance: string;
+    event_date: string;
+  }[];
+
   // Sesiones ya registradas para los eventos de esta semana (event_id -> RPE)
   const doneByEvent = new Map<string, number | null>();
   if (events.length > 0) {
@@ -224,6 +239,7 @@ async function Week({ searchParams }: { searchParams: Params }) {
       {/* Dias de la semana */}
       {days.map((day) => {
         const dayEvents = byDay.get(day) ?? [];
+        const dayComps = competitions.filter((c) => c.event_date === day);
         const isToday = day === today;
 
         return (
@@ -240,8 +256,23 @@ async function Week({ searchParams }: { searchParams: Params }) {
               )}
             </h2>
 
+            {dayComps.map((c) => (
+              <Link
+                key={c.id}
+                href="/competencias"
+                className="mb-2 block rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-sm text-amber-200"
+              >
+                🏁 {c.name}
+                {c.discipline !== "otra" &&
+                  ` · ${c.discipline.replace("m", " m")}`}
+                {` · Importancia ${c.importance}`}
+              </Link>
+            ))}
+
             {dayEvents.length === 0 ? (
-              <p className="text-sm text-neutral-600">Sin eventos</p>
+              dayComps.length === 0 ? (
+                <p className="text-sm text-neutral-600">Sin eventos</p>
+              ) : null
             ) : (
               <ul className="space-y-2">
                 {dayEvents.map((ev) => {
