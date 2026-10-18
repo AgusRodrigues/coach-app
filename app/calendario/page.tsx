@@ -118,7 +118,7 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
   const defaultDate = isMonth ? selected : refDay
 
   return (
-    <div className="space-y-4">
+    <div key={isMonth ? `m-${ym}` : `w-${monday}`} className="space-y-4">
       {/* Selector de vista */}
       <div className="grid grid-cols-2 rounded-2xl bg-neutral-900 p-1 text-sm font-semibold">
         <Link
@@ -289,6 +289,8 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
 
           {/* Detalle del dia elegido */}
           <DayBlock
+            key={selected}
+            animateIn
             day={selected}
             today={today}
             events={byDay.get(selected) ?? []}

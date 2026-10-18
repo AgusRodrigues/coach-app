@@ -44,6 +44,7 @@ export function DayBlock({
   comps,
   doneByEvent,
   returnTo,
+  animateIn = false,
 }: {
   day: string
   today: string
@@ -51,6 +52,7 @@ export function DayBlock({
   comps: CalComp[]
   doneByEvent: Map<string, number | null>
   returnTo: string
+  animateIn?: boolean
 }) {
   const isToday = day === today
 
@@ -58,7 +60,7 @@ export function DayBlock({
     <section
       className={`rounded-2xl p-4 ${
         isToday ? 'bg-neutral-900 ring-1 ring-brand' : 'bg-neutral-900'
-      }`}
+      } ${animateIn ? 'enter' : ''}`}
     >
       <h2 className="mb-2 text-sm font-semibold capitalize text-neutral-300">
         {dayLabel(day)}

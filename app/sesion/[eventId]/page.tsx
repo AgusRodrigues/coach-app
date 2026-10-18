@@ -36,7 +36,8 @@ const inputClass =
 const choiceClass =
   'flex items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800 ' +
   'peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand ' +
-  'peer-focus-visible:ring-2 peer-focus-visible:ring-brand'
+  'peer-focus-visible:ring-2 peer-focus-visible:ring-brand ' +
+  'transition duration-150 peer-checked:scale-105 active:scale-95'
 
 // Todo lo que lee sesion o datos va dentro de Suspense, y empieza con connection()
 async function SessionForm({

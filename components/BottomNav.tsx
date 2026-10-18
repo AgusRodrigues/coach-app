@@ -91,7 +91,7 @@ export default function BottomNav() {
                 }`}
               >
                 {isActive && (
-                  <span className="absolute inset-x-7 top-0 h-0.5 rounded-full bg-brand" />
+                  <span className="tab-indicator absolute inset-x-7 top-0 h-0.5 rounded-full bg-brand" />
                 )}
                 <Icon className="h-6 w-6" />
                 {label}

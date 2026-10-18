@@ -182,3 +182,118 @@
     animation: none !important;
   }
 }
+
+/* =====================================================================
+   MOVIMIENTO
+   Poco y con motivo: cada animacion responde a una accion de la persona
+   (abrir, tocar, cambiar de pantalla). Duraciones cortas.
+   La regla de "reduced motion" de arriba las apaga si el sistema lo pide.
+   Para cambiar la velocidad, editar las duraciones de este bloque.
+   ===================================================================== */
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes tab-in {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* Cambio de pantalla (y de semana o mes): el contenido entra con un leve ascenso.
+   Se aplica al contenido directo de cada pantalla, no a las tarjetas una por una. */
+.app-main > div > :not(p) {
+  animation: enter 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* Se usa a mano en bloques que cambian en el lugar (ej: el dia elegido del mes) */
+.enter {
+  animation: enter 200ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* Tarjetas desplegables: flecha que gira y contenido que se despliega al abrir */
+details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details > summary::after {
+  content: "";
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.6;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 180ms ease-out;
+}
+
+details[open] > summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+details[open] > :not(summary) {
+  animation: reveal 200ms ease-out;
+}
+
+/* Respuesta al toque: botones y tarjetas se hunden un poquito */
+button,
+a[href] {
+  transition: transform 120ms ease-out;
+}
+
+button:not(:disabled):active,
+a[href]:active {
+  transform: scale(0.97);
+}
+
+/* Barra de avance de la semana: se llena al llegar */
+.bar-grow {
+  transform-origin: left;
+  animation: grow-x 700ms cubic-bezier(0.2, 0.7, 0.3, 1) 150ms both;
+}
+
+/* Indicador de la pestana activa */
+.tab-indicator {
+  animation: tab-in 200ms ease-out both;
+}

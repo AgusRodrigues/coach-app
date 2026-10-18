@@ -288,7 +288,7 @@ async function Dashboard() {
             aria-label="Sesiones completadas esta semana"
             className="h-2.5 overflow-hidden rounded-full bg-neutral-800"
           >
-            <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
+            <div className="bar-grow h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
           </div>
         )}
       </section>
