@@ -43,6 +43,18 @@ export async function createPain(formData: FormData) {
     back('error', 'La fecha no es válida (no puede ser futura).')
   }
 
+  const DUPLICATE_MSG =
+    'Ya tenés una molestia activa en esa zona. Actualizá su intensidad desde «Editar» o marcala como resuelta antes de registrar otra.'
+
+  const { data: existing } = await supabase
+    .from('pain_reports')
+    .select('id')
+    .eq('zone_code', zone)
+    .is('resolved_on', null)
+    .limit(1)
+
+  if (existing && existing.length > 0) back('error', DUPLICATE_MSG)
+
   // user_id se completa solo con el usuario logueado (default auth.uid())
   const { error } = await supabase.from('pain_reports').insert({
     zone_code: zone,
@@ -52,7 +64,12 @@ export async function createPain(formData: FormData) {
     notes,
   })
 
-  if (error) back('error', 'No se pudo guardar la molestia.')
+  if (error) {
+    // 23505 = violacion de la regla "una molestia activa por zona" (por ejemplo, dos
+    // envios casi simultaneos)
+    if (error.code === '23505') back('error', DUPLICATE_MSG)
+    back('error', 'No se pudo guardar la molestia.')
+  }
 
   refresh()
   const warn = type === 'agudo' || (intensity ?? 0) >= 6

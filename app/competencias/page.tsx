@@ -1,145 +1,105 @@
-import { Suspense } from "react";
-import Link from "next/link";
-import { connection } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import { daysBetween, dayLabel, todayISO } from "@/lib/dates";
-import { formatCs } from "@/lib/time";
-import { createCompetition, deleteCompetition, saveResult } from "./actions";
+import { Suspense } from 'react'
+import Link from 'next/link'
+import { connection } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+import { daysBetween, dayLabel, todayISO } from '@/lib/dates'
+import { formatCs } from '@/lib/time'
+import { countdown, phaseFor } from '@/lib/season'
+import { createCompetition, deleteCompetition, saveResult } from './actions'
 
-type Search = Promise<{ error?: string; message?: string }>;
+type Search = Promise<{ error?: string; message?: string }>
 
 type Comp = {
-  id: string;
-  event_date: string;
-  name: string;
-  discipline: string;
-  importance: string;
-  goal_time_cs: number | null;
-  result_time_cs: number | null;
-  wind_ms: number | string | null;
-  notes: string | null;
-};
+  id: string
+  event_date: string
+  name: string
+  discipline: string
+  importance: string
+  goal_time_cs: number | null
+  result_time_cs: number | null
+  wind_ms: number | string | null
+  notes: string | null
+}
 
 const DISCIPLINE_LABEL: Record<string, string> = {
-  "100m": "100 m",
-  "200m": "200 m",
-  otra: "Otra prueba",
-};
+  '100m': '100 m',
+  '200m': '200 m',
+  otra: 'Otra prueba',
+}
 
 const IMPORTANCE_BADGE: Record<string, string> = {
-  A: "bg-amber-900 text-amber-200",
-  B: "bg-sky-900 text-sky-200",
-  C: "bg-neutral-700 text-neutral-200",
-};
+  A: 'bg-amber-900 text-amber-200',
+  B: 'bg-sky-900 text-sky-200',
+  C: 'bg-neutral-700 text-neutral-200',
+}
 
 const IMPORTANCE_HELP: Record<string, string> = {
-  A: "objetivo principal",
-  B: "importante",
-  C: "preparación o control",
-};
+  A: 'objetivo principal',
+  B: 'importante',
+  C: 'preparación o control',
+}
 
 const inputClass =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100";
+  'w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100'
 
-const TIME_PATTERN = "(\\d{1,2}:\\d{2}|\\d{1,3})([.,]\\d{1,3})?";
-
-// Fase orientativa segun cuanto falta para la competencia principal.
-// Es una referencia general de periodizacion, no un plan.
-function phaseFor(days: number): { name: string; hint: string } {
-  if (days <= 7) {
-    return {
-      name: "Semana de competencia",
-      hint: "Menos volumen, intensidad justa y prioridad al descanso, al sueño y a la comida.",
-    };
-  }
-  if (days <= 28) {
-    return {
-      name: "Pre-competitiva",
-      hint: "Sesiones de calidad cerca de tu ritmo de carrera, con recuperación completa entre ellas.",
-    };
-  }
-  if (days <= 84) {
-    return {
-      name: "Preparación específica",
-      hint: "Más trabajo de velocidad y de tolerancia al esfuerzo propio de tu prueba.",
-    };
-  }
-  return {
-    name: "Preparación general",
-    hint: "Construir base: fuerza, técnica y volumen de trabajo.",
-  };
-}
-
-function countdown(days: number): string {
-  if (days === 0) return "hoy";
-  if (days === 1) return "mañana";
-  if (days < 14) return `en ${days} días`;
-  return `en ${Math.round(days / 7)} semanas (${days} días)`;
-}
+const TIME_PATTERN = '(\\d{1,2}:\\d{2}|\\d{1,3})([.,]\\d{1,3})?'
 
 function windText(w: number | string | null): string | null {
-  if (w === null) return null;
-  const n = Number(w);
-  return `${n > 0 ? "+" : ""}${n} m/s`;
+  if (w === null) return null
+  const n = Number(w)
+  return `${n > 0 ? '+' : ''}${n} m/s`
 }
 
 function dateText(iso: string, today: string): string {
-  const year = iso.slice(0, 4);
-  return year === today.slice(0, 4)
-    ? dayLabel(iso)
-    : `${dayLabel(iso)} ${year}`;
+  const year = iso.slice(0, 4)
+  return year === today.slice(0, 4) ? dayLabel(iso) : `${dayLabel(iso)} ${year}`
 }
 
 // Todo lo que lee sesion o datos va dentro de Suspense, y empieza con connection()
 async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
-  await connection();
+  await connection()
 
-  const { error, message } = await searchParams;
-  const today = todayISO();
-  const supabase = await createClient();
+  const { error, message } = await searchParams
+  const today = todayISO()
+  const supabase = await createClient()
 
   const { data, error: dbError } = await supabase
-    .from("competitions")
+    .from('competitions')
     .select(
-      "id, event_date, name, discipline, importance, goal_time_cs, result_time_cs, wind_ms, notes",
+      'id, event_date, name, discipline, importance, goal_time_cs, result_time_cs, wind_ms, notes'
     )
-    .order("event_date", { ascending: true })
-    .limit(500);
+    .order('event_date', { ascending: true })
+    .limit(500)
 
-  const all = (data ?? []) as Comp[];
+  const all = (data ?? []) as Comp[]
 
-  const upcoming = all.filter((c) => c.event_date > today);
-  const pending = all.filter(
-    (c) => c.event_date <= today && c.result_time_cs === null,
-  );
+  const upcoming = all.filter((c) => c.event_date > today)
+  const pending = all.filter((c) => c.event_date <= today && c.result_time_cs === null)
   const past = all
     .filter((c) => c.event_date <= today && c.result_time_cs !== null)
-    .sort((a, b) => b.event_date.localeCompare(a.event_date));
+    .sort((a, b) => b.event_date.localeCompare(a.event_date))
 
   // Competencia principal: la proxima de importancia A; si no hay, la proxima a secas
-  const mainTarget =
-    upcoming.find((c) => c.importance === "A") ?? upcoming[0] ?? null;
-  const mainDays = mainTarget ? daysBetween(today, mainTarget.event_date) : 0;
-  const phase = mainTarget ? phaseFor(mainDays) : null;
+  const mainTarget = upcoming.find((c) => c.importance === 'A') ?? upcoming[0] ?? null
+  const mainDays = mainTarget ? daysBetween(today, mainTarget.event_date) : 0
+  const phase = mainTarget ? phaseFor(mainDays) : null
 
   // Mejor marca en competencia por prueba (con viento legal: hasta +2,0 m/s)
-  const bestByDiscipline = new Map<string, number>();
+  const bestByDiscipline = new Map<string, number>()
   for (const c of all) {
-    if (c.result_time_cs === null || c.discipline === "otra") continue;
-    const w = c.wind_ms === null ? null : Number(c.wind_ms);
-    if (w !== null && w > 2) continue;
-    const best = bestByDiscipline.get(c.discipline);
+    if (c.result_time_cs === null || c.discipline === 'otra') continue
+    const w = c.wind_ms === null ? null : Number(c.wind_ms)
+    if (w !== null && w > 2) continue
+    const best = bestByDiscipline.get(c.discipline)
     if (best === undefined || c.result_time_cs < best) {
-      bestByDiscipline.set(c.discipline, c.result_time_cs);
+      bestByDiscipline.set(c.discipline, c.result_time_cs)
     }
   }
 
   return (
     <div className="space-y-5">
       {error && (
-        <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">
-          {error}
-        </p>
+        <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">{error}</p>
       )}
       {message && (
         <p className="rounded-lg bg-emerald-950 p-3 text-sm text-emerald-300">
@@ -154,31 +114,29 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
 
       {/* Fase de la temporada */}
       {mainTarget && phase ? (
-        <section className="space-y-2 rounded-xl bg-neutral-900 p-4 ring-1 ring-amber-700/60">
-          <p className="text-xs uppercase tracking-wide text-neutral-500">
-            {mainTarget.importance === "A"
-              ? "Objetivo principal"
-              : "Próxima competencia"}
+        <section className="space-y-2 rounded-xl bg-neutral-900 p-4 ring-1 ring-brand">
+          <p className="text-sm text-neutral-400">
+            {mainTarget.importance === 'A' ? 'Objetivo principal' : 'Próxima competencia'}
           </p>
           <p className="text-lg font-semibold">{mainTarget.name}</p>
           <p className="text-sm text-neutral-300">
             {dateText(mainTarget.event_date, today)} · {countdown(mainDays)}
           </p>
           <div className="rounded-lg bg-neutral-950 p-3">
-            <p className="text-sm font-medium text-amber-200">
+            <p className="text-sm font-medium text-brand-fg">
               Fase orientativa: {phase.name}
             </p>
             <p className="text-sm text-neutral-400">{phase.hint}</p>
           </div>
           <p className="text-xs text-neutral-500">
-            Es una referencia general según los días que faltan. El plan
-            concreto depende de tu entrenador y de cómo vengas.
+            Es una referencia general según los días que faltan. El plan concreto depende de
+            tu entrenador y de cómo vengas.
           </p>
         </section>
       ) : (
         <p className="rounded-xl bg-neutral-900 p-4 text-sm text-neutral-400">
-          No tenés competencias próximas cargadas. Al agregar una, la app
-          calcula cuánto falta y en qué fase de la temporada estás.
+          No tenés competencias próximas cargadas. Al agregar una, la app calcula cuánto
+          falta y en qué fase de la temporada estás.
         </p>
       )}
 
@@ -187,15 +145,11 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
         <section className="space-y-3">
           <h2 className="font-medium">Cargá el resultado ({pending.length})</h2>
           {pending.map((c) => (
-            <article
-              key={c.id}
-              className="space-y-3 rounded-xl bg-neutral-900 p-4"
-            >
+            <article key={c.id} className="space-y-3 rounded-xl bg-neutral-900 p-4">
               <div>
                 <p className="font-medium">{c.name}</p>
                 <p className="text-sm capitalize text-neutral-400">
-                  {dateText(c.event_date, today)} ·{" "}
-                  {DISCIPLINE_LABEL[c.discipline] ?? c.discipline}
+                  {dateText(c.event_date, today)} · {DISCIPLINE_LABEL[c.discipline] ?? c.discipline}
                 </p>
                 {c.goal_time_cs !== null && (
                   <p className="text-xs text-neutral-500">
@@ -233,16 +187,14 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
                     />
                   </label>
                 </div>
-                <button className="w-full rounded-lg bg-white p-3 font-medium text-black">
+                <button className="w-full rounded-lg bg-brand p-3 font-medium text-on-brand">
                   Guardar resultado
                 </button>
               </form>
 
               <form action={deleteCompetition}>
                 <input type="hidden" name="id" value={c.id} />
-                <button className="text-sm text-red-400">
-                  Eliminar (no se corrió)
-                </button>
+                <button className="text-sm text-red-400">Eliminar (no se corrió)</button>
               </form>
             </article>
           ))}
@@ -259,12 +211,9 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
           </p>
         ) : (
           upcoming.map((c) => {
-            const days = daysBetween(today, c.event_date);
+            const days = daysBetween(today, c.event_date)
             return (
-              <article
-                key={c.id}
-                className="space-y-2 rounded-xl bg-neutral-900 p-4"
-              >
+              <article key={c.id} className="space-y-2 rounded-xl bg-neutral-900 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium">{c.name}</p>
@@ -283,35 +232,26 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
 
                 <p className="text-sm text-neutral-400">
                   {DISCIPLINE_LABEL[c.discipline] ?? c.discipline}
-                  {c.goal_time_cs !== null &&
-                    ` · objetivo ${formatCs(c.goal_time_cs)} s`}
+                  {c.goal_time_cs !== null && ` · objetivo ${formatCs(c.goal_time_cs)} s`}
                 </p>
-                {c.notes && (
-                  <p className="text-sm text-neutral-500">{c.notes}</p>
-                )}
+                {c.notes && <p className="text-sm text-neutral-500">{c.notes}</p>}
 
                 <details className="text-sm">
-                  <summary className="cursor-pointer text-neutral-500">
-                    Editar
-                  </summary>
+                  <summary className="cursor-pointer text-neutral-500">Editar</summary>
                   <form action={deleteCompetition} className="mt-2">
                     <input type="hidden" name="id" value={c.id} />
-                    <button className="text-red-400">
-                      Eliminar competencia
-                    </button>
+                    <button className="text-red-400">Eliminar competencia</button>
                   </form>
                 </details>
               </article>
-            );
+            )
           })
         )}
       </section>
 
       {/* Nueva competencia */}
       <details className="rounded-xl bg-neutral-900 p-4">
-        <summary className="cursor-pointer font-medium">
-          + Agregar competencia
-        </summary>
+        <summary className="cursor-pointer font-medium">+ Agregar competencia</summary>
 
         <form action={createCompetition} className="mt-4 space-y-3">
           <input
@@ -327,11 +267,7 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1 text-xs text-neutral-400">
               <span>Prueba</span>
-              <select
-                name="discipline"
-                defaultValue="100m"
-                className={inputClass}
-              >
+              <select name="discipline" defaultValue="100m" className={inputClass}>
                 {Object.entries(DISCIPLINE_LABEL).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
@@ -371,11 +307,10 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
           />
 
           <p className="text-xs text-neutral-500">
-            Podés cargar también competencias pasadas: después se te pide el
-            resultado.
+            Podés cargar también competencias pasadas: después se te pide el resultado.
           </p>
 
-          <button className="w-full rounded-lg bg-white p-3 font-medium text-black">
+          <button className="w-full rounded-lg bg-brand p-3 font-medium text-on-brand">
             Guardar competencia
           </button>
         </form>
@@ -387,26 +322,22 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
           <h2 className="font-medium">Resultados</h2>
 
           {past.map((c) => {
-            const result = c.result_time_cs as number;
-            const wind = c.wind_ms === null ? null : Number(c.wind_ms);
-            const illegalWind = wind !== null && wind > 2;
+            const result = c.result_time_cs as number
+            const wind = c.wind_ms === null ? null : Number(c.wind_ms)
+            const illegalWind = wind !== null && wind > 2
             const isBest =
-              c.discipline !== "otra" &&
+              c.discipline !== 'otra' &&
               !illegalWind &&
-              bestByDiscipline.get(c.discipline) === result;
-            const diff =
-              c.goal_time_cs !== null ? result - c.goal_time_cs : null;
+              bestByDiscipline.get(c.discipline) === result
+            const diff = c.goal_time_cs !== null ? result - c.goal_time_cs : null
 
             return (
-              <article
-                key={c.id}
-                className="space-y-1 rounded-xl bg-neutral-900 p-4"
-              >
+              <article key={c.id} className="space-y-1 rounded-xl bg-neutral-900 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium">{c.name}</p>
                     <p className="text-sm capitalize text-neutral-400">
-                      {dateText(c.event_date, today)} ·{" "}
+                      {dateText(c.event_date, today)} ·{' '}
                       {DISCIPLINE_LABEL[c.discipline] ?? c.discipline}
                     </p>
                   </div>
@@ -422,7 +353,7 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
                 <p className="text-lg font-semibold">
                   {formatCs(result)} s
                   {isBest && (
-                    <span className="ml-2 rounded-full bg-emerald-900 px-2 py-0.5 text-xs font-normal text-emerald-200">
+                    <span className="ml-2 rounded-full bg-amber-900 px-2 py-0.5 text-xs font-normal text-amber-200">
                       🏅 Mejor marca en competencia
                     </span>
                   )}
@@ -430,10 +361,10 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
 
                 <p className="text-xs text-neutral-500">
                   {wind !== null && `Viento ${windText(wind)}`}
-                  {wind !== null && diff !== null && " · "}
+                  {wind !== null && diff !== null && ' · '}
                   {diff !== null &&
                     (diff === 0
-                      ? "Igualaste tu objetivo"
+                      ? 'Igualaste tu objetivo'
                       : diff < 0
                         ? `${formatCs(Math.abs(diff))} s mejor que el objetivo`
                         : `${formatCs(diff)} s por encima del objetivo`)}
@@ -441,23 +372,15 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
 
                 {illegalWind && (
                   <p className="text-xs text-amber-400">
-                    Viento a favor mayor a 2,0 m/s: la marca no sería
-                    homologable.
+                    Viento a favor mayor a 2,0 m/s: la marca no sería homologable.
                   </p>
                 )}
-                {c.notes && (
-                  <p className="text-sm text-neutral-500">{c.notes}</p>
-                )}
+                {c.notes && <p className="text-sm text-neutral-500">{c.notes}</p>}
 
                 <details className="pt-1 text-sm">
-                  <summary className="cursor-pointer text-neutral-500">
-                    Editar
-                  </summary>
+                  <summary className="cursor-pointer text-neutral-500">Editar</summary>
                   <div className="mt-2 space-y-3">
-                    <form
-                      action={saveResult}
-                      className="grid grid-cols-[1fr_1fr_auto] items-end gap-2"
-                    >
+                    <form action={saveResult} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
                       <input type="hidden" name="id" value={c.id} />
                       <label className="space-y-1 text-xs text-neutral-400">
                         <span>Tiempo (s)</span>
@@ -479,7 +402,7 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
                           step="0.1"
                           min="-10"
                           max="10"
-                          defaultValue={wind ?? ""}
+                          defaultValue={wind ?? ''}
                           className={inputClass}
                         />
                       </label>
@@ -490,38 +413,32 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
 
                     <form action={deleteCompetition}>
                       <input type="hidden" name="id" value={c.id} />
-                      <button className="text-red-400">
-                        Eliminar competencia
-                      </button>
+                      <button className="text-red-400">Eliminar competencia</button>
                     </form>
                   </div>
                 </details>
               </article>
-            );
+            )
           })}
         </section>
       )}
     </div>
-  );
+  )
 }
 
-export default function CompetenciasPage({
-  searchParams,
-}: {
-  searchParams: Search;
-}) {
+export default function CompetenciasPage({ searchParams }: { searchParams: Search }) {
   return (
-    <main className="min-h-screen bg-neutral-950 p-6 text-neutral-100">
+    <main className="app-main">
       <div className="mx-auto max-w-md space-y-4">
         <Link href="/" className="text-sm text-neutral-400">
           ← Inicio
         </Link>
-        <h1 className="text-2xl font-semibold">Competencias</h1>
+        <h1 className="font-display text-4xl font-bold">Competencias</h1>
 
         <Suspense fallback={<p className="text-neutral-400">Cargando…</p>}>
           <CompetenciasContent searchParams={searchParams} />
         </Suspense>
       </div>
     </main>
-  );
+  )
 }

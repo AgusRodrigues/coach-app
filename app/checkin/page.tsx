@@ -1,19 +1,19 @@
-import { Suspense } from "react";
-import Link from "next/link";
-import { connection } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import { dayLabel, todayISO } from "@/lib/dates";
-import { saveCheckin } from "./actions";
+import { Suspense } from 'react'
+import Link from 'next/link'
+import { connection } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
+import { dayLabel, todayISO } from '@/lib/dates'
+import { saveCheckin } from './actions'
 
-type Search = Promise<{ error?: string }>;
+type Search = Promise<{ error?: string }>
 
 const inputClass =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100";
+  'w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100'
 
 const choiceClass =
-  "flex items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800 " +
-  "peer-checked:border-white peer-checked:bg-white peer-checked:text-black " +
-  "peer-focus-visible:ring-2 peer-focus-visible:ring-white";
+  'flex items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800 ' +
+  'peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand ' +
+  'peer-focus-visible:ring-2 peer-focus-visible:ring-brand'
 
 // Escala de 1 a 5 con botones grandes (un toque)
 function Scale({
@@ -23,11 +23,11 @@ function Scale({
   high,
   defaultValue,
 }: {
-  name: string;
-  legend: string;
-  low: string;
-  high: string;
-  defaultValue: number | null;
+  name: string
+  legend: string
+  low: string
+  high: string
+  defaultValue: number | null
 }) {
   return (
     <fieldset className="space-y-2">
@@ -52,22 +52,22 @@ function Scale({
         <span>5 = {high}</span>
       </p>
     </fieldset>
-  );
+  )
 }
 
 // Todo lo que lee sesion o datos va dentro de Suspense, y empieza con connection()
 async function CheckinForm({ searchParams }: { searchParams: Search }) {
-  await connection();
+  await connection()
 
-  const { error } = await searchParams;
-  const today = todayISO();
+  const { error } = await searchParams
+  const today = todayISO()
 
-  const supabase = await createClient();
+  const supabase = await createClient()
   const { data: row } = await supabase
-    .from("daily_checkins")
-    .select("sleep_hours, sleep_quality, energy, soreness, notes")
-    .eq("checkin_date", today)
-    .maybeSingle();
+    .from('daily_checkins')
+    .select('sleep_hours, sleep_quality, energy, soreness, notes')
+    .eq('checkin_date', today)
+    .maybeSingle()
 
   return (
     <div className="space-y-5">
@@ -81,9 +81,7 @@ async function CheckinForm({ searchParams }: { searchParams: Search }) {
       </div>
 
       {error && (
-        <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">
-          {error}
-        </p>
+        <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">{error}</p>
       )}
 
       <form action={saveCheckin} className="space-y-6">
@@ -98,7 +96,7 @@ async function CheckinForm({ searchParams }: { searchParams: Search }) {
             step="0.5"
             required
             placeholder="7.5"
-            defaultValue={row?.sleep_hours ?? ""}
+            defaultValue={row?.sleep_hours ?? ''}
             className={inputClass}
           />
         </label>
@@ -131,41 +129,36 @@ async function CheckinForm({ searchParams }: { searchParams: Search }) {
           name="notes"
           rows={2}
           placeholder="Nota (opcional)"
-          defaultValue={row?.notes ?? ""}
+          defaultValue={row?.notes ?? ''}
           className={inputClass}
         />
 
         <p className="text-xs text-neutral-500">
-          Si tenés dolor agudo o una molestia puntual, registrala en la sesión
-          de entrenamiento. Si persiste más de unos días, consultá a un
-          profesional.
+          Si tenés dolor agudo o una molestia puntual, registrala en la sesión de
+          entrenamiento. Si persiste más de unos días, consultá a un profesional.
         </p>
 
-        <button className="w-full rounded-lg bg-white p-4 text-lg font-medium text-black">
-          {row ? "Actualizar check-in" : "Guardar check-in"}
+        <button className="w-full rounded-lg bg-brand p-4 text-lg font-medium text-on-brand">
+          {row ? 'Actualizar check-in' : 'Guardar check-in'}
         </button>
       </form>
     </div>
-  );
+  )
 }
 
-export default function CheckinPage({
-  searchParams,
-}: {
-  searchParams: Search;
-}) {
+export default function CheckinPage({ searchParams }: { searchParams: Search }) {
   return (
-    <main className="min-h-screen bg-neutral-950 p-6 text-neutral-100">
+    <main className="app-main">
       <div className="mx-auto max-w-md space-y-4">
         <Link href="/" className="text-sm text-neutral-400">
           ← Inicio
         </Link>
-        <h1 className="text-2xl font-semibold">Check-in de la mañana</h1>
+        <h1 className="font-display text-4xl font-bold">Check-in de la mañana</h1>
 
         <Suspense fallback={<p className="text-neutral-400">Cargando…</p>}>
           <CheckinForm searchParams={searchParams} />
         </Suspense>
       </div>
     </main>
-  );
+  )
 }

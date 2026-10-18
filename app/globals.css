@@ -1,26 +1,184 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* =====================================================================
+   TEMA
+   Color principal: el bordo de una pista de atletismo.
+   Claro: blanco + bordo.  Oscuro: negro + bordo.
+   Para cambiar el tono del bordo, editar --brand, --brand-hover y
+   --brand-fg en los dos bloques (claro y oscuro).
+   ===================================================================== */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  color-scheme: light dark;
+
+  /* Superficies y texto */
+  --bg: #f3f3f4;
+  --surface: #ffffff;
+  --surface-2: #ececee;
+  --border: #e0e0e4;
+  --border-strong: #c4c4cc;
+  --fg: #151518;
+  --fg-soft: #2c2c32;
+  --fg-muted: #55555f;
+  --fg-subtle: #6a6a74;
+
+  /* Marca */
+  --brand: #8b2332;
+  --brand-hover: #731c29;
+  --on-brand: #ffffff;
+  --brand-fg: #8b2332; /* bordo usado como color de texto */
+  --brand-soft: rgb(139 35 50 / 0.1);
+  --gold: #8a6500; /* podio: mejores marcas */
+
+  /* Estados */
+  --danger-bg: #fdecee;
+  --danger-fg: #a11d2b;
+  --ok-bg: #e8f5ec;
+  --ok-bg-strong: #d3ebdb;
+  --ok-fg: #17663a;
+  --ok-border: #86c79c;
+  --warn-bg: #fff4dc;
+  --warn-bg-strong: #fbe6b0;
+  --warn-fg: #8a5a00;
+  --warn-border: #e9b949;
+  --info-bg: #e0e7f5;
+  --info-fg: #28467f;
+  --other-bg: #eae3f5;
+  --other-fg: #4f3a82;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #000000;
+    --surface: #141416;
+    --surface-2: #202024;
+    --border: #2b2b30;
+    --border-strong: #3f3f46;
+    --fg: #f4f4f5;
+    --fg-soft: #d4d4d8;
+    --fg-muted: #a1a1aa;
+    --fg-subtle: #8b8b95;
+
+    --brand: #a22a3b;
+    --brand-hover: #b8344a;
+    --on-brand: #ffffff;
+    --brand-fg: #e8798a;
+    --brand-soft: rgb(232 121 138 / 0.14);
+    --gold: #e3b93c;
+
+    --danger-bg: #2a0e12;
+    --danger-fg: #f29aa3;
+    --ok-bg: #0e2418;
+    --ok-bg-strong: #14301f;
+    --ok-fg: #7fd3a0;
+    --ok-border: #1f6b42;
+    --warn-bg: #2a1e08;
+    --warn-bg-strong: #3a2a0a;
+    --warn-fg: #f1c463;
+    --warn-border: #8a6414;
+    --info-bg: #14233f;
+    --info-fg: #9db9ec;
+    --other-bg: #231a3a;
+    --other-fg: #bfa9ee;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* =====================================================================
+   Tailwind: las clases que ya usa la app (neutral-*, red-*, emerald-*,
+   amber-*, etc.) pasan a leer estos tokens. Asi toda la app sigue el tema
+   sin tocar cada pantalla.
+   ===================================================================== */
+@theme inline {
+  --font-sans: var(--font-body-src), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-src), "Arial Narrow", ui-sans-serif, sans-serif;
+
+  /* Escala neutra -> superficies y texto */
+  --color-neutral-950: var(--bg);
+  --color-neutral-900: var(--surface);
+  --color-neutral-800: var(--surface-2);
+  --color-neutral-700: var(--border);
+  --color-neutral-600: var(--border-strong);
+  --color-neutral-500: var(--fg-subtle);
+  --color-neutral-400: var(--fg-muted);
+  --color-neutral-300: var(--fg-soft);
+  --color-neutral-200: var(--fg-soft);
+  --color-neutral-100: var(--fg);
+
+  /* Marca */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-on-brand: var(--on-brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-gold: var(--gold);
+
+  /* Estados */
+  --color-red-950: var(--danger-bg);
+  --color-red-400: var(--danger-fg);
+  --color-red-300: var(--danger-fg);
+
+  --color-emerald-950: var(--ok-bg);
+  --color-emerald-900: var(--ok-bg-strong);
+  --color-emerald-700: var(--ok-border);
+  --color-emerald-400: var(--ok-fg);
+  --color-emerald-300: var(--ok-fg);
+  --color-emerald-200: var(--ok-fg);
+
+  --color-amber-950: var(--warn-bg);
+  --color-amber-900: var(--warn-bg-strong);
+  --color-amber-700: var(--warn-border);
+  --color-amber-400: var(--warn-fg);
+  --color-amber-300: var(--warn-fg);
+  --color-amber-200: var(--warn-fg);
+
+  --color-sky-900: var(--info-bg);
+  --color-sky-200: var(--info-fg);
+
+  --color-violet-900: var(--other-bg);
+  --color-violet-200: var(--other-fg);
+}
+
+@layer base {
+  html {
+    background-color: var(--bg);
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand-fg);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Contenedor de cada pantalla: deja lugar para la barra inferior */
+  .app-main {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--fg);
+    padding: 1.5rem 1.25rem calc(6.5rem + env(safe-area-inset-bottom));
+  }
+
+  /* Lineas de andarivel sobre una superficie bordo */
+  .lane-stripes {
+    background-image: repeating-linear-gradient(
+      180deg,
+      transparent 0 14px,
+      rgb(255 255 255 / 0.14) 14px 16px
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
 }

@@ -1,363 +1,329 @@
-import { Suspense } from "react";
-import Link from "next/link";
-import { connection } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { Suspense } from 'react'
+import Link from 'next/link'
+import { connection } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
 import {
   addDays,
+  addMonths,
   dayLabel,
-  isoDateInTZ,
   isValidISO,
+  isValidMonth,
+  isoDateInTZ,
   mondayOf,
+  monthGrid,
+  monthLabel,
   shortDate,
-  timeInTZ,
   todayISO,
-} from "@/lib/dates";
-import { createEvent, deleteEvent } from "./actions";
+} from '@/lib/dates'
+import { DayBlock, KINDS, NewEventForm, type CalComp, type CalEvent } from './parts'
 
-type Params = Promise<{ semana?: string; error?: string; message?: string }>;
+type Params = Promise<{
+  vista?: string
+  semana?: string
+  mes?: string
+  dia?: string
+  error?: string
+  message?: string
+}>
 
-type CalEvent = {
-  id: string;
-  kind: string;
-  title: string;
-  starts_at: string;
-  ends_at: string;
-  is_planned_training: boolean;
-  notes: string | null;
-};
+const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
-// Clases completas (Tailwind no detecta clases armadas dinamicamente)
-const KINDS: Record<string, { label: string; badge: string }> = {
-  track: { label: "Pista", badge: "bg-emerald-900 text-emerald-200" },
-  gym: { label: "Gimnasio", badge: "bg-sky-900 text-sky-200" },
-  daily_life: {
-    label: "Vida diaria",
-    badge: "bg-neutral-700 text-neutral-200",
-  },
-  competition: { label: "Competencia", badge: "bg-amber-900 text-amber-200" },
-  other: { label: "Otro", badge: "bg-violet-900 text-violet-200" },
-};
-
-const inputClass =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100";
+const arrowClass =
+  'flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-700 text-lg'
 
 // Todo lo que lee sesion o datos va dentro de Suspense, y empieza con connection()
-async function Week({ searchParams }: { searchParams: Params }) {
-  await connection();
+async function CalendarContent({ searchParams }: { searchParams: Params }) {
+  await connection()
 
-  const { semana, error, message } = await searchParams;
-  const today = todayISO();
-  const monday = mondayOf(semana && isValidISO(semana) ? semana : today);
-  const nextMonday = addDays(monday, 7);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
-  const isCurrentWeek = monday === mondayOf(today);
+  const { vista, semana, mes, dia, error, message } = await searchParams
+  const today = todayISO()
+  const isMonth = vista === 'mes'
 
-  const supabase = await createClient();
+  // ---- Que dias se muestran y a donde se vuelve despues de guardar ----
+  let days: string[]
+  let ym = ''
+  let monday = ''
+  let selected = ''
+  let returnTo: string
+
+  if (isMonth) {
+    const fromDia = dia && isValidISO(dia) ? dia : null
+    ym = mes && isValidMonth(mes) ? mes : (fromDia ?? today).slice(0, 7)
+    days = monthGrid(ym)
+    selected =
+      fromDia && fromDia.slice(0, 7) === ym
+        ? fromDia
+        : today.slice(0, 7) === ym
+          ? today
+          : `${ym}-01`
+    returnTo = `/calendario?vista=mes&mes=${ym}&dia=${selected}`
+  } else {
+    monday = mondayOf(semana && isValidISO(semana) ? semana : today)
+    days = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
+    returnTo = `/calendario?vista=semana&semana=${monday}`
+  }
+
+  const from = days[0]
+  const to = addDays(days[days.length - 1], 1)
+
+  // ---- Datos del periodo ----
+  const supabase = await createClient()
+
   const { data, error: dbError } = await supabase
-    .from("calendar_events")
-    .select("id, kind, title, starts_at, ends_at, is_planned_training, notes")
-    .gte("starts_at", `${monday}T00:00:00-03:00`)
-    .lt("starts_at", `${nextMonday}T00:00:00-03:00`)
-    .order("starts_at");
+    .from('calendar_events')
+    .select('id, kind, title, starts_at, ends_at, is_planned_training, notes')
+    .gte('starts_at', `${from}T00:00:00-03:00`)
+    .lt('starts_at', `${to}T00:00:00-03:00`)
+    .order('starts_at')
+  const events = (data ?? []) as CalEvent[]
 
-  const events = (data ?? []) as CalEvent[];
-
-  // Competencias de la semana (solo lectura: se cargan desde la seccion Competencias)
   const { data: compData } = await supabase
-    .from("competitions")
-    .select("id, name, discipline, importance, event_date")
-    .gte("event_date", monday)
-    .lt("event_date", nextMonday)
-    .order("event_date");
-  const competitions = (compData ?? []) as {
-    id: string;
-    name: string;
-    discipline: string;
-    importance: string;
-    event_date: string;
-  }[];
+    .from('competitions')
+    .select('id, name, discipline, importance, event_date')
+    .gte('event_date', from)
+    .lt('event_date', to)
+    .order('event_date')
+  const competitions = (compData ?? []) as CalComp[]
 
-  // Sesiones ya registradas para los eventos de esta semana (event_id -> RPE)
-  const doneByEvent = new Map<string, number | null>();
+  // Sesiones ya registradas (event_id -> RPE)
+  const doneByEvent = new Map<string, number | null>()
   if (events.length > 0) {
     const { data: logs } = await supabase
-      .from("session_logs")
-      .select("event_id, rpe")
+      .from('session_logs')
+      .select('event_id, rpe')
       .in(
-        "event_id",
-        events.map((e) => e.id),
-      );
-    for (const log of (logs ?? []) as {
-      event_id: string | null;
-      rpe: number | null;
-    }[]) {
-      if (log.event_id) doneByEvent.set(log.event_id, log.rpe);
+        'event_id',
+        events.map((e) => e.id)
+      )
+    for (const log of (logs ?? []) as { event_id: string | null; rpe: number | null }[]) {
+      if (log.event_id) doneByEvent.set(log.event_id, log.rpe)
     }
   }
 
-  const byDay = new Map<string, CalEvent[]>();
+  const byDay = new Map<string, CalEvent[]>()
   for (const ev of events) {
-    const key = isoDateInTZ(ev.starts_at);
-    byDay.set(key, [...(byDay.get(key) ?? []), ev]);
+    const key = isoDateInTZ(ev.starts_at)
+    byDay.set(key, [...(byDay.get(key) ?? []), ev])
+  }
+  const compsByDay = new Map<string, CalComp[]>()
+  for (const c of competitions) {
+    compsByDay.set(c.event_date, [...(compsByDay.get(c.event_date) ?? []), c])
   }
 
-  const defaultDate = days.includes(today) ? today : monday;
+  // ---- Enlaces del selector Semana | Mes ----
+  const refDay = isMonth ? selected : days.includes(today) ? today : monday
+  const weekHref = `/calendario?vista=semana&semana=${mondayOf(refDay)}`
+  const monthHref = `/calendario?vista=mes&mes=${refDay.slice(0, 7)}&dia=${refDay}`
+
+  const defaultDate = isMonth ? selected : refDay
 
   return (
     <div className="space-y-4">
-      {/* Navegacion de semana */}
-      <div className="flex items-center justify-between">
+      {/* Selector de vista */}
+      <div className="grid grid-cols-2 rounded-2xl bg-neutral-900 p-1 text-sm font-semibold">
         <Link
-          href={`/calendario?semana=${addDays(monday, -7)}`}
-          className="rounded-lg border border-neutral-700 px-3 py-2"
-          aria-label="Semana anterior"
+          href={weekHref}
+          aria-current={!isMonth ? 'page' : undefined}
+          className={`rounded-xl py-2.5 text-center ${
+            !isMonth ? 'bg-brand text-on-brand' : 'text-neutral-400'
+          }`}
         >
-          ←
+          Semana
         </Link>
-        <div className="text-center">
-          <p className="font-medium">
-            {shortDate(monday)} – {shortDate(days[6])}
-          </p>
-          {!isCurrentWeek && (
-            <Link
-              href="/calendario"
-              className="text-xs text-neutral-400 underline"
-            >
-              Ir a esta semana
-            </Link>
-          )}
-        </div>
         <Link
-          href={`/calendario?semana=${nextMonday}`}
-          className="rounded-lg border border-neutral-700 px-3 py-2"
-          aria-label="Semana siguiente"
+          href={monthHref}
+          aria-current={isMonth ? 'page' : undefined}
+          className={`rounded-xl py-2.5 text-center ${
+            isMonth ? 'bg-brand text-on-brand' : 'text-neutral-400'
+          }`}
         >
-          →
+          Mes
         </Link>
       </div>
 
+      {/* Navegacion del periodo */}
+      {isMonth ? (
+        <div className="flex items-center justify-between">
+          <Link
+            href={`/calendario?vista=mes&mes=${addMonths(ym, -1)}`}
+            className={arrowClass}
+            aria-label="Mes anterior"
+          >
+            ←
+          </Link>
+          <div className="text-center">
+            <p className="font-display text-3xl font-semibold capitalize leading-none">
+              {monthLabel(ym)}
+            </p>
+            {ym !== today.slice(0, 7) && (
+              <Link
+                href={`/calendario?vista=mes&mes=${today.slice(0, 7)}&dia=${today}`}
+                className="text-xs text-brand-fg underline"
+              >
+                Ir a este mes
+              </Link>
+            )}
+          </div>
+          <Link
+            href={`/calendario?vista=mes&mes=${addMonths(ym, 1)}`}
+            className={arrowClass}
+            aria-label="Mes siguiente"
+          >
+            →
+          </Link>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <Link
+            href={`/calendario?vista=semana&semana=${addDays(monday, -7)}`}
+            className={arrowClass}
+            aria-label="Semana anterior"
+          >
+            ←
+          </Link>
+          <div className="text-center">
+            <p className="font-display text-3xl font-semibold leading-none">
+              {shortDate(monday)} al {shortDate(days[6])}
+            </p>
+            {monday !== mondayOf(today) && (
+              <Link
+                href="/calendario?vista=semana"
+                className="text-xs text-brand-fg underline"
+              >
+                Ir a esta semana
+              </Link>
+            )}
+          </div>
+          <Link
+            href={`/calendario?vista=semana&semana=${addDays(monday, 7)}`}
+            className={arrowClass}
+            aria-label="Semana siguiente"
+          >
+            →
+          </Link>
+        </div>
+      )}
+
       {error && (
-        <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">
+        <p role="alert" className="rounded-xl bg-red-950 p-3 text-sm text-red-300">
           {error}
         </p>
       )}
       {message && (
-        <p className="rounded-lg bg-emerald-950 p-3 text-sm text-emerald-300">
-          {message}
-        </p>
+        <p className="rounded-xl bg-emerald-950 p-3 text-sm text-emerald-300">{message}</p>
       )}
       {dbError && (
-        <p className="rounded-lg bg-red-950 p-3 text-sm text-red-300">
+        <p className="rounded-xl bg-red-950 p-3 text-sm text-red-300">
           Error al cargar el calendario: {dbError.message}
         </p>
       )}
 
-      {/* Formulario de nuevo evento */}
-      <details className="rounded-xl bg-neutral-900 p-4">
-        <summary className="cursor-pointer font-medium">+ Nuevo evento</summary>
+      <NewEventForm defaultDate={defaultDate} returnTo={returnTo} />
 
-        <form action={createEvent} className="mt-4 space-y-3">
-          <input
-            name="title"
-            required
-            placeholder="Título (ej: Series 6x60 m)"
-            className={inputClass}
-          />
+      {isMonth ? (
+        <>
+          {/* Grilla mensual */}
+          <section className="rounded-2xl bg-neutral-900 p-3" aria-label={monthLabel(ym)}>
+            <div className="mb-1 grid grid-cols-7 text-center text-xs font-medium text-neutral-500">
+              {WEEKDAYS.map((w, i) => (
+                <span key={i}>{w}</span>
+              ))}
+            </div>
 
-          <select name="kind" defaultValue="track" className={inputClass}>
-            {Object.entries(KINDS).map(([value, k]) => (
-              <option key={value} value={value}>
-                {k.label}
-              </option>
-            ))}
-          </select>
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((day) => {
+                const inMonth = day.slice(0, 7) === ym
+                const dayEvents = byDay.get(day) ?? []
+                const dayComps = compsByDay.get(day) ?? []
 
-          <input
-            type="date"
-            name="date"
-            required
-            defaultValue={defaultDate}
-            className={inputClass}
-          />
+                // Un punto por tipo de evento (maximo 3)
+                const kinds: string[] = []
+                for (const e of dayEvents) if (!kinds.includes(e.kind)) kinds.push(e.kind)
+                if (dayComps.length > 0 && !kinds.includes('competition')) {
+                  kinds.push('competition')
+                }
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-sm">
-              <span>Inicio</span>
-              <input
-                type="time"
-                name="start"
-                required
-                defaultValue="18:00"
-                className={inputClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span>Fin</span>
-              <input
-                type="time"
-                name="end"
-                required
-                defaultValue="19:30"
-                className={inputClass}
-              />
-            </label>
-          </div>
+                const isSelected = day === selected
+                const isToday = day === today
 
-          <label className="block space-y-1 text-sm">
-            <span>Repetir semanalmente (cantidad de semanas)</span>
-            <input
-              type="number"
-              name="repeat"
-              min="1"
-              max="26"
-              defaultValue="1"
-              className={inputClass}
-            />
-            <span className="block text-xs text-neutral-500">
-              1 = solo esta vez. Ej: 8 lo carga el mismo día durante 8 semanas.
-            </span>
-          </label>
-
-          <label className="flex items-center gap-3 text-sm">
-            <input type="checkbox" name="planned" defaultChecked />
-            <span>Es un entrenamiento planificado</span>
-          </label>
-
-          <textarea
-            name="notes"
-            rows={2}
-            placeholder="Notas (opcional)"
-            className={inputClass}
-          />
-
-          <button className="w-full rounded-lg bg-white p-3 font-medium text-black">
-            Guardar evento
-          </button>
-        </form>
-      </details>
-
-      {/* Dias de la semana */}
-      {days.map((day) => {
-        const dayEvents = byDay.get(day) ?? [];
-        const dayComps = competitions.filter((c) => c.event_date === day);
-        const isToday = day === today;
-
-        return (
-          <section
-            key={day}
-            className={`rounded-xl p-4 ${
-              isToday ? "bg-neutral-800 ring-1 ring-white/40" : "bg-neutral-900"
-            }`}
-          >
-            <h2 className="mb-2 text-sm font-medium capitalize text-neutral-300">
-              {dayLabel(day)}
-              {isToday && (
-                <span className="ml-2 text-xs text-neutral-400">hoy</span>
-              )}
-            </h2>
-
-            {dayComps.map((c) => (
-              <Link
-                key={c.id}
-                href="/competencias"
-                className="mb-2 block rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-sm text-amber-200"
-              >
-                🏁 {c.name}
-                {c.discipline !== "otra" &&
-                  ` · ${c.discipline.replace("m", " m")}`}
-                {` · Importancia ${c.importance}`}
-              </Link>
-            ))}
-
-            {dayEvents.length === 0 ? (
-              dayComps.length === 0 ? (
-                <p className="text-sm text-neutral-600">Sin eventos</p>
-              ) : null
-            ) : (
-              <ul className="space-y-2">
-                {dayEvents.map((ev) => {
-                  const kind = KINDS[ev.kind] ?? KINDS.other;
-                  return (
-                    <li
-                      key={ev.id}
-                      className="flex items-start justify-between gap-3 rounded-lg bg-neutral-950 p-3"
+                return (
+                  <Link
+                    key={day}
+                    href={`/calendario?vista=mes&mes=${day.slice(0, 7)}&dia=${day}`}
+                    aria-label={dayLabel(day)}
+                    aria-current={isSelected ? 'date' : undefined}
+                    className={`flex aspect-square flex-col items-center justify-start gap-1 rounded-xl pt-1.5 ${
+                      isSelected ? 'bg-neutral-800 ring-2 ring-brand' : ''
+                    } ${inMonth ? '' : 'opacity-40'}`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 items-center justify-center rounded-full text-sm ${
+                        isToday ? 'bg-brand font-semibold text-on-brand' : ''
+                      }`}
                     >
-                      <div className="min-w-0 space-y-1">
-                        <p className="text-xs text-neutral-400">
-                          {timeInTZ(ev.starts_at)} – {timeInTZ(ev.ends_at)}
-                        </p>
-                        <p className="font-medium">{ev.title}</p>
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          <span
-                            className={`rounded-full px-2 py-0.5 ${kind.badge}`}
-                          >
-                            {kind.label}
-                          </span>
-                          {ev.is_planned_training && (
-                            <span className="rounded-full border border-neutral-600 px-2 py-0.5 text-neutral-300">
-                              Entreno planificado
-                            </span>
-                          )}
-                        </div>
-                        {ev.notes && (
-                          <p className="text-sm text-neutral-400">{ev.notes}</p>
-                        )}
-                        {ev.is_planned_training &&
-                          (doneByEvent.has(ev.id) ? (
-                            <p className="pt-1 text-sm text-emerald-400">
-                              ✓ Registrada
-                              {doneByEvent.get(ev.id) != null &&
-                                ` · RPE ${doneByEvent.get(ev.id)}`}
-                            </p>
-                          ) : (
-                            <Link
-                              href={`/sesion/${ev.id}`}
-                              className="mt-1 inline-block rounded-lg bg-white px-4 py-2 text-sm font-medium text-black"
-                            >
-                              Terminé
-                            </Link>
-                          ))}
-                      </div>
+                      {Number(day.slice(8))}
+                    </span>
+                    <span className="flex gap-0.5">
+                      {kinds.slice(0, 3).map((k) => (
+                        <span
+                          key={k}
+                          className={`h-1.5 w-1.5 rounded-full ${KINDS[k]?.dot ?? 'bg-neutral-500'}`}
+                        />
+                      ))}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
 
-                      <form action={deleteEvent}>
-                        <input type="hidden" name="id" value={ev.id} />
-                        <input type="hidden" name="semana" value={monday} />
-                        <button
-                          aria-label={`Borrar ${ev.title}`}
-                          className="rounded-lg px-2 py-1 text-neutral-500 hover:text-red-400"
-                        >
-                          ✕
-                        </button>
-                      </form>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            {/* Referencias de los puntos */}
+            <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-neutral-700 pt-3 text-xs text-neutral-400">
+              {['track', 'gym', 'daily_life', 'competition'].map((k) => (
+                <li key={k} className="flex items-center gap-1.5">
+                  <span className={`h-2 w-2 rounded-full ${KINDS[k].dot}`} />
+                  {KINDS[k].label}
+                </li>
+              ))}
+            </ul>
           </section>
-        );
-      })}
+
+          {/* Detalle del dia elegido */}
+          <DayBlock
+            day={selected}
+            today={today}
+            events={byDay.get(selected) ?? []}
+            comps={compsByDay.get(selected) ?? []}
+            doneByEvent={doneByEvent}
+            returnTo={returnTo}
+          />
+        </>
+      ) : (
+        days.map((day) => (
+          <DayBlock
+            key={day}
+            day={day}
+            today={today}
+            events={byDay.get(day) ?? []}
+            comps={compsByDay.get(day) ?? []}
+            doneByEvent={doneByEvent}
+            returnTo={returnTo}
+          />
+        ))
+      )}
     </div>
-  );
+  )
 }
 
-export default function CalendarioPage({
-  searchParams,
-}: {
-  searchParams: Params;
-}) {
+export default function CalendarioPage({ searchParams }: { searchParams: Params }) {
   return (
-    <main className="min-h-screen bg-neutral-950 p-6 text-neutral-100">
+    <main className="app-main">
       <div className="mx-auto max-w-md space-y-4">
-        <Link href="/" className="text-sm text-neutral-400">
-          ← Inicio
-        </Link>
-        <h1 className="text-2xl font-semibold">Calendario</h1>
+        <h1 className="font-display text-4xl font-bold">Calendario</h1>
 
         <Suspense fallback={<p className="text-neutral-400">Cargando…</p>}>
-          <Week searchParams={searchParams} />
+          <CalendarContent searchParams={searchParams} />
         </Suspense>
       </div>
     </main>
-  );
+  )
 }

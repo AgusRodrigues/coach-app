@@ -3,19 +3,28 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { addDays, isValidISO, isValidTime, mondayOf, toTimestamp } from '@/lib/dates'
+import { addDays, isValidISO, isValidTime, toTimestamp } from '@/lib/dates'
 
 const KINDS = ['track', 'gym', 'daily_life', 'competition', 'other'] as const
 
-function back(week: string | null, kind: 'error' | 'message', text: string): never {
-  const params = new URLSearchParams()
-  if (week) params.set('semana', week)
-  params.set(kind, text)
-  redirect(`/calendario?${params.toString()}`)
+// Solo se acepta volver a una ruta del calendario (evita redirecciones a otros sitios)
+function safeReturn(raw: FormDataEntryValue | null): string {
+  const s = String(raw ?? '')
+  return s === '/calendario' || s.startsWith('/calendario?') ? s : '/calendario'
+}
+
+// Vuelve a la misma vista (semana o mes) agregando el mensaje o el error
+function back(returnTo: string, kind: 'error' | 'message', text: string): never {
+  const url = new URL(returnTo, 'http://local')
+  url.searchParams.delete('error')
+  url.searchParams.delete('message')
+  url.searchParams.set(kind, text)
+  redirect(url.pathname + url.search)
 }
 
 export async function createEvent(formData: FormData) {
   const supabase = await createClient()
+  const returnTo = safeReturn(formData.get('return_to'))
 
   const title = String(formData.get('title') ?? '').trim()
   const kind = String(formData.get('kind') ?? '')
@@ -29,17 +38,15 @@ export async function createEvent(formData: FormData) {
     26
   )
 
-  const week = isValidISO(date) ? mondayOf(date) : null
-
-  if (!title) back(week, 'error', 'Poné un título.')
+  if (!title) back(returnTo, 'error', 'Poné un título.')
   if (!(KINDS as readonly string[]).includes(kind)) {
-    back(week, 'error', 'Elegí un tipo de evento.')
+    back(returnTo, 'error', 'Elegí un tipo de evento.')
   }
   if (!isValidISO(date) || !isValidTime(start) || !isValidTime(end)) {
-    back(week, 'error', 'Revisá la fecha y las horas.')
+    back(returnTo, 'error', 'Revisá la fecha y las horas.')
   }
   if (end <= start) {
-    back(week, 'error', 'La hora de fin tiene que ser posterior a la de inicio.')
+    back(returnTo, 'error', 'La hora de fin tiene que ser posterior a la de inicio.')
   }
 
   // Un evento por semana, con el mismo dia y horario
@@ -56,23 +63,24 @@ export async function createEvent(formData: FormData) {
   })
 
   const { error } = await supabase.from('calendar_events').insert(rows)
-  if (error) back(week, 'error', 'No se pudo guardar el evento.')
+  if (error) back(returnTo, 'error', 'No se pudo guardar el evento.')
 
   revalidatePath('/calendario')
-  back(week, 'message', repeat > 1 ? `Se crearon ${repeat} eventos.` : 'Evento creado.')
+  revalidatePath('/')
+  back(returnTo, 'message', repeat > 1 ? `Se crearon ${repeat} eventos.` : 'Evento creado.')
 }
 
 export async function deleteEvent(formData: FormData) {
   const supabase = await createClient()
+  const returnTo = safeReturn(formData.get('return_to'))
 
   const id = String(formData.get('id') ?? '')
-  const rawWeek = String(formData.get('semana') ?? '')
-  const week = isValidISO(rawWeek) ? rawWeek : null
 
   // RLS garantiza que solo se pueden borrar eventos propios
   const { error } = await supabase.from('calendar_events').delete().eq('id', id)
-  if (error) back(week, 'error', 'No se pudo borrar el evento.')
+  if (error) back(returnTo, 'error', 'No se pudo borrar el evento.')
 
   revalidatePath('/calendario')
-  back(week, 'message', 'Evento borrado.')
+  revalidatePath('/')
+  back(returnTo, 'message', 'Evento borrado.')
 }

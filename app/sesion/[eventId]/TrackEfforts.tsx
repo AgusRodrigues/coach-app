@@ -1,57 +1,51 @@
-"use client";
+'use client'
 
-import { useState } from "react";
+import { useState } from 'react'
 
 type Row = {
-  id: number;
-  distance: string;
-  time: string;
-  rest: string;
-  wind: string;
-};
+  id: number
+  distance: string
+  time: string
+  rest: string
+  wind: string
+}
 
-const MAX_ROWS = 40;
+const MAX_ROWS = 40
 
 const inputClass =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100";
+  'w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100'
 
 // Los inputs se envian con el formulario del servidor: cada fila aporta un valor
 // a e_distance, e_time, e_rest y e_wind (en el mismo orden).
-export default function TrackEfforts({
-  defaultDistance,
-}: {
-  defaultDistance: number;
-}) {
+export default function TrackEfforts({ defaultDistance }: { defaultDistance: number }) {
   const [rows, setRows] = useState<Row[]>([
-    { id: 1, distance: String(defaultDistance), time: "", rest: "", wind: "" },
-  ]);
-  const [nextId, setNextId] = useState(2);
+    { id: 1, distance: String(defaultDistance), time: '', rest: '', wind: '' },
+  ])
+  const [nextId, setNextId] = useState(2)
 
-  function update(id: number, field: keyof Omit<Row, "id">, value: string) {
-    setRows((rs) =>
-      rs.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
-    );
+  function update(id: number, field: keyof Omit<Row, 'id'>, value: string) {
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [field]: value } : r)))
   }
 
   function addRow() {
-    if (rows.length >= MAX_ROWS) return;
-    const last = rows[rows.length - 1];
+    if (rows.length >= MAX_ROWS) return
+    const last = rows[rows.length - 1]
     // La nueva fila copia distancia y descanso de la anterior
     setRows([
       ...rows,
       {
         id: nextId,
         distance: last?.distance ?? String(defaultDistance),
-        time: "",
-        rest: last?.rest ?? "",
-        wind: "",
+        time: '',
+        rest: last?.rest ?? '',
+        wind: '',
       },
-    ]);
-    setNextId(nextId + 1);
+    ])
+    setNextId(nextId + 1)
   }
 
   function removeRow(id: number) {
-    setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.id !== id) : rs));
+    setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.id !== id) : rs))
   }
 
   return (
@@ -82,8 +76,8 @@ export default function TrackEfforts({
                 min="10"
                 max="1000"
                 value={row.distance}
-                onChange={(e) => update(row.id, "distance", e.target.value)}
-                required={row.time.trim() !== ""}
+                onChange={(e) => update(row.id, 'distance', e.target.value)}
+                required={row.time.trim() !== ''}
                 className={inputClass}
               />
             </label>
@@ -98,7 +92,7 @@ export default function TrackEfforts({
                 pattern="(\d{1,2}:\d{2}|\d{1,3})([.,]\d{1,3})?"
                 title="Ej: 10.85 o 1:02.30"
                 value={row.time}
-                onChange={(e) => update(row.id, "time", e.target.value)}
+                onChange={(e) => update(row.id, 'time', e.target.value)}
                 className={inputClass}
               />
             </label>
@@ -113,7 +107,7 @@ export default function TrackEfforts({
                 max="120"
                 step="0.5"
                 value={row.rest}
-                onChange={(e) => update(row.id, "rest", e.target.value)}
+                onChange={(e) => update(row.id, 'rest', e.target.value)}
                 className={inputClass}
               />
             </label>
@@ -129,7 +123,7 @@ export default function TrackEfforts({
                 step="0.1"
                 placeholder="+1.2"
                 value={row.wind}
-                onChange={(e) => update(row.id, "wind", e.target.value)}
+                onChange={(e) => update(row.id, 'wind', e.target.value)}
                 className={inputClass}
               />
             </label>
@@ -146,5 +140,5 @@ export default function TrackEfforts({
         + Agregar repetición
       </button>
     </div>
-  );
+  )
 }

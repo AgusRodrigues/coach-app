@@ -72,6 +72,40 @@ export function daysBetween(from: string, to: string): number {
   )
 }
 
+// ---- Meses (formato "YYYY-MM") ----
+
+export function isValidMonth(ym: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(ym)
+}
+
+// addMonths('2026-10', 1) = '2026-11' ; addMonths('2026-01', -1) = '2025-12'
+export function addMonths(ym: string, n: number): string {
+  const [y, m] = ym.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7)
+}
+
+// "octubre de 2026"
+export function monthLabel(ym: string): string {
+  return new Date(`${ym}-01T12:00:00Z`).toLocaleDateString('es-AR', {
+    timeZone: 'UTC',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+// Todos los dias de la grilla del mes: desde el lunes de la semana del dia 1
+// hasta el domingo de la semana del ultimo dia (35 o 42 dias).
+export function monthGrid(ym: string): string[] {
+  const first = `${ym}-01`
+  const last = addDays(`${addMonths(ym, 1)}-01`, -1)
+  const start = mondayOf(first)
+  const end = addDays(mondayOf(last), 6)
+
+  const out: string[] = []
+  for (let d = start; d <= end; d = addDays(d, 1)) out.push(d)
+  return out
+}
+
 // Fecha + hora locales de Buenos Aires -> timestamp con zona horaria
 export function toTimestamp(date: string, time: string): string {
   return `${date}T${time}:00${OFFSET}`
