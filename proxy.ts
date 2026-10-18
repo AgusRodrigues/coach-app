@@ -34,7 +34,10 @@ export async function proxy(request: NextRequest) {
   const isLoggedIn = !!data?.claims
 
   const path = request.nextUrl.pathname
-  const isPublicRoute = path.startsWith('/login') || path.startsWith('/auth')
+  const PUBLIC_PREFIXES = ['/login', '/auth', '/offline', '/icons']
+  const PUBLIC_FILES = ['/manifest.webmanifest', '/sw.js']
+  const isPublicRoute =
+    PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix)) || PUBLIC_FILES.includes(path)
 
   // Sin sesion y fuera de las rutas publicas: redirigir al login
   if (!isLoggedIn && !isPublicRoute) {
@@ -48,7 +51,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Todas las rutas salvo archivos estaticos e imagenes
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Todas las rutas salvo archivos estaticos, imagenes y los archivos de la PWA
+    // (manifiesto, service worker, pantalla sin conexion e iconos), que tienen que
+    // ser publicos: el navegador los pide sin sesion.
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

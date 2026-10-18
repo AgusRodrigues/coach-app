@@ -6,15 +6,25 @@
 // A proposito NO guarda paginas de la app en el telefono: tienen datos de salud y
 // de entrenamiento, y las respuestas dependen de quien este logueado.
 
-const CACHE = 'coach-offline-v1'
+const CACHE = 'coach-offline-v2'
 const OFFLINE_URL = '/offline'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll([OFFLINE_URL, '/icons/icon-192.png']))
-      .then(() => self.skipWaiting())
+    (async () => {
+      // Sin cookies y sin aceptar redirecciones: si /offline mandara a otra pagina
+      // (por ejemplo al login), la instalacion falla en vez de guardar la pantalla equivocada.
+      const response = await fetch(OFFLINE_URL, {
+        cache: 'reload',
+        credentials: 'omit',
+        redirect: 'error',
+      })
+      if (!response.ok) throw new Error('La pantalla sin conexion no esta disponible')
+
+      const cache = await caches.open(CACHE)
+      await cache.put(OFFLINE_URL, response)
+      await self.skipWaiting()
+    })()
   )
 })
 
