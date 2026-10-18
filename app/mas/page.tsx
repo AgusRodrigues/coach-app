@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { connection } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import InstallCard from '@/components/InstallCard'
 import { logout } from '../login/actions'
 
 // Todo lo que lee sesion o datos va dentro de Suspense, y empieza con connection()
@@ -50,6 +51,8 @@ async function MoreContent() {
 
   return (
     <div className="space-y-6">
+      <InstallCard />
+
       <ul className="space-y-2">
         {items.map((item) => (
           <li key={item.href}>

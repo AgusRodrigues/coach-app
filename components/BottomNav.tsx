@@ -70,7 +70,13 @@ export default function BottomNav() {
   const pathname = usePathname()
 
   // Sin barra en el login ni en el formulario de sesion (para no salir sin querer)
-  if (pathname.startsWith('/login') || pathname.startsWith('/sesion')) return null
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/sesion') ||
+    pathname.startsWith('/offline')
+  ) {
+    return null
+  }
 
   return (
     <nav

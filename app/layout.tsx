@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Suspense } from 'react'
 import { Barlow_Condensed, Figtree } from 'next/font/google'
 import BottomNav from '@/components/BottomNav'
+import PwaSetup from '@/components/PwaSetup'
 import './globals.css'
 
 // Titulos y numeros grandes: condensada, de cartel de estadio
@@ -22,6 +23,11 @@ const body = Figtree({
 export const metadata: Metadata = {
   title: 'Coach',
   description: 'Tu entrenamiento de velocidad, gimnasio y recuperación.',
+  applicationName: 'Coach',
+  // iPhone: al agregarla a inicio se abre a pantalla completa con este nombre.
+  // 'default' deja la barra de estado legible tanto en tema claro como oscuro.
+  appleWebApp: { capable: true, title: 'Coach', statusBarStyle: 'default' },
+  formatDetection: { telephone: false },
 }
 
 export const viewport: Viewport = {
@@ -39,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es" className={`${display.variable} ${body.variable}`}>
       <body className="antialiased">
         {children}
+        <PwaSetup />
         {/* usePathname() necesita Suspense en rutas dinamicas */}
         <Suspense fallback={null}>
           <BottomNav />
