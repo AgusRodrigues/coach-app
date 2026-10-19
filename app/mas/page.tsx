@@ -82,6 +82,50 @@ async function MoreContent() {
         ))}
       </ul>
 
+      <section className="space-y-1 rounded-2xl bg-neutral-900 p-4">
+        <h2 className="mb-1 font-display text-2xl font-semibold leading-none">Tus datos</h2>
+
+        {/* Enlace comun (no Link): es una descarga, no una navegacion de la app */}
+        <a
+          href="/mas/exportar"
+          download
+          className="flex items-center justify-between rounded-xl py-3 text-sm"
+        >
+          <span className="font-medium">Descargar mis datos</span>
+          <span className="text-neutral-400">.json</span>
+        </a>
+
+        <div className="border-t border-neutral-700" />
+
+        <Link
+          href="/privacidad"
+          className="flex items-center justify-between rounded-xl py-3 text-sm"
+        >
+          <span className="font-medium">Política de privacidad</span>
+          <span aria-hidden className="text-neutral-500">›</span>
+        </Link>
+
+        <div className="border-t border-neutral-700" />
+
+        <Link
+          href="/terminos"
+          className="flex items-center justify-between rounded-xl py-3 text-sm"
+        >
+          <span className="font-medium">Términos de uso</span>
+          <span aria-hidden className="text-neutral-500">›</span>
+        </Link>
+
+        <div className="border-t border-neutral-700" />
+
+        <Link
+          href="/mas/eliminar"
+          className="flex items-center justify-between rounded-xl py-3 text-sm text-red-300"
+        >
+          <span className="font-medium">Eliminar mi cuenta</span>
+          <span aria-hidden>›</span>
+        </Link>
+      </section>
+
       <section className="space-y-3 rounded-2xl bg-neutral-900 p-4">
         <div>
           <p className="text-sm text-neutral-400">Sesión iniciada como</p>

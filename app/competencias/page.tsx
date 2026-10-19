@@ -380,7 +380,7 @@ async function CompetenciasContent({ searchParams }: { searchParams: Search }) {
                 <details className="pt-1 text-sm">
                   <summary className="cursor-pointer text-neutral-500">Editar</summary>
                   <div className="mt-2 space-y-3">
-                    <form action={saveResult} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                    <form action={saveResult} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2">
                       <input type="hidden" name="id" value={c.id} />
                       <label className="space-y-1 text-xs text-neutral-400">
                         <span>Tiempo (s)</span>

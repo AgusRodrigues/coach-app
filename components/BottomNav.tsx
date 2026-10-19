@@ -73,7 +73,9 @@ export default function BottomNav() {
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/sesion') ||
-    pathname.startsWith('/offline')
+    pathname.startsWith('/offline') ||
+    pathname.startsWith('/privacidad') ||
+    pathname.startsWith('/terminos')
   ) {
     return null
   }

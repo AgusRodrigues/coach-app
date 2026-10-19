@@ -173,7 +173,7 @@ async function MolestiasContent({ searchParams }: { searchParams: Search }) {
                   <div className="mt-3 space-y-3">
                     <form action={updatePain} className="flex items-end gap-2">
                       <input type="hidden" name="id" value={p.id} />
-                      <label className="flex-1 space-y-1 text-xs text-neutral-400">
+                      <label className="min-w-0 flex-1 space-y-1 text-xs text-neutral-400">
                         <span>Intensidad actual (0 a 10)</span>
                         <input
                           type="number"

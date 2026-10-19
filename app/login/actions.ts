@@ -21,11 +21,22 @@ export async function login(formData: FormData) {
 }
 
 export async function signup(formData: FormData) {
+  // Crear una cuenta exige aceptar los terminos y la politica de privacidad.
+  // (Ingresar con una cuenta existente no lo pide.)
+  if (formData.get('accept') !== 'on') {
+    redirect(
+      '/login?error=' +
+        encodeURIComponent('Para crear la cuenta tenés que aceptar los Términos y la Política de privacidad.')
+    )
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase.auth.signUp({
     email: String(formData.get('email') ?? ''),
     password: String(formData.get('password') ?? ''),
+    // Queda registrado cuando se acepto
+    options: { data: { accepted_terms_at: new Date().toISOString() } },
   })
 
   if (error) {

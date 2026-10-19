@@ -34,7 +34,7 @@ export async function proxy(request: NextRequest) {
   const isLoggedIn = !!data?.claims
 
   const path = request.nextUrl.pathname
-  const PUBLIC_PREFIXES = ['/login', '/auth', '/offline', '/icons']
+  const PUBLIC_PREFIXES = ['/login', '/auth', '/offline', '/icons', '/privacidad', '/terminos']
   const PUBLIC_FILES = ['/manifest.webmanifest', '/sw.js']
   const isPublicRoute =
     PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix)) || PUBLIC_FILES.includes(path)

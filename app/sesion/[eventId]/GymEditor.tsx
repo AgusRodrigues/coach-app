@@ -30,7 +30,7 @@ const FALLBACK_DAYS = ['Día A', 'Día B', 'Piernas', 'Tren superior']
 const inputClass =
   'w-full rounded-lg border border-neutral-700 bg-neutral-800 p-3 text-neutral-100'
 const cellClass =
-  'w-full rounded-lg border border-neutral-700 bg-neutral-800 p-2 text-center text-neutral-100'
+  'w-full min-w-0 rounded-lg border border-neutral-700 bg-neutral-800 p-2 text-center text-neutral-100'
 
 function toRows(sets: HistSet[]): SetRow[] {
   return sets.map((s) => ({ reps: String(s.reps), load: s.load ? String(s.load) : '' }))
@@ -260,7 +260,7 @@ export default function GymEditor({ days, catalog, lastByExercise, suggestedDay 
             </div>
           </div>
 
-          <div className="grid grid-cols-[2rem_1fr_1fr_2rem] items-center gap-2 text-xs text-neutral-500">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-2 text-xs text-neutral-500">
             <span />
             <span className="text-center">Reps</span>
             <span className="text-center">Kg</span>
@@ -268,7 +268,7 @@ export default function GymEditor({ days, catalog, lastByExercise, suggestedDay 
           </div>
 
           {ex.sets.map((s, i) => (
-            <div key={i} className="grid grid-cols-[2rem_1fr_1fr_2rem] items-center gap-2">
+            <div key={i} className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-2">
               <span className="text-center text-sm text-neutral-500">{i + 1}</span>
               <input
                 type="number"
@@ -351,7 +351,7 @@ export default function GymEditor({ days, catalog, lastByExercise, suggestedDay 
             }}
             maxLength={60}
             placeholder="¿No está? Escribí el nombre"
-            className={inputClass}
+            className={`${inputClass} min-w-0`}
           />
           <button
             type="button"

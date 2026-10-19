@@ -159,7 +159,9 @@
 @layer components {
   /* Contenedor de cada pantalla: deja lugar para la barra inferior */
   .app-main {
-    min-height: 100vh;
+    min-height: 100vh; /* respaldo */
+    min-height: 100dvh; /* alto visible real en celulares */
+    overflow-x: clip; /* red de seguridad: nada puede ensanchar la pantalla */
     background: var(--bg);
     color: var(--fg);
     padding: calc(1.5rem + env(safe-area-inset-top)) 1.25rem
@@ -277,15 +279,28 @@ details[open] > :not(summary) {
   animation: reveal 200ms ease-out;
 }
 
-/* Respuesta al toque: botones y tarjetas se hunden un poquito */
+/* Respuesta al toque: un leve cambio de opacidad. A proposito NO cambia el tamano:
+   en pantallas tactiles, achicar el boton mientras el dedo esta encima mueve el
+   area de toque y puede hacer que se pierda el toque. */
 button,
 a[href] {
-  transition: transform 120ms ease-out;
+  transition: opacity 120ms ease-out;
 }
 
 button:not(:disabled):active,
 a[href]:active {
-  transform: scale(0.97);
+  opacity: 0.8;
+}
+
+/* Un toque es un toque: sin zoom por doble toque ni demora de 300 ms */
+a,
+button,
+input,
+select,
+textarea,
+summary,
+label {
+  touch-action: manipulation;
 }
 
 /* Barra de avance de la semana: se llena al llegar */
