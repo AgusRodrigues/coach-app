@@ -47,7 +47,8 @@ async function Dashboard() {
   const monday = mondayOf(today)
   const nextMonday = addDays(monday, 7)
 
-  const [profileRes, todayRes, weekRes, checkinRes, painRes, compRes] = await Promise.all([
+  const [profileRes, todayRes, weekRes, checkinRes, painRes, compRes, logsRes] =
+    await Promise.all([
     supabase.from('profiles').select('display_name').maybeSingle(),
     supabase
       .from('calendar_events')
@@ -72,6 +73,14 @@ async function Dashboard() {
       .gte('event_date', today)
       .order('event_date')
       .limit(20),
+    // Sesiones registradas esta semana (incluye las de hoy). Se buscan por fecha para no
+    // tener que esperar a la consulta de eventos.
+    supabase
+      .from('session_logs')
+      .select('event_id')
+      .not('event_id', 'is', null)
+      .gte('started_at', `${monday}T00:00:00-03:00`)
+      .lt('started_at', `${nextMonday}T00:00:00-03:00`),
   ])
 
   const name = (profileRes.data as { display_name: string | null } | null)?.display_name
@@ -82,16 +91,9 @@ async function Dashboard() {
   const weekIds = ((weekRes.data ?? []) as { id: string }[]).map((e) => e.id)
 
   // Sesiones ya registradas (de hoy y de la semana)
-  const allIds = [...new Set([...weekIds, ...todayEvents.map((e) => e.id)])]
   const doneIds = new Set<string>()
-  if (allIds.length > 0) {
-    const { data: logs } = await supabase
-      .from('session_logs')
-      .select('event_id')
-      .in('event_id', allIds)
-    for (const l of (logs ?? []) as { event_id: string | null }[]) {
-      if (l.event_id) doneIds.add(l.event_id)
-    }
+  for (const l of (logsRes.data ?? []) as { event_id: string | null }[]) {
+    if (l.event_id) doneIds.add(l.event_id)
   }
 
   const plannedTotal = weekIds.length

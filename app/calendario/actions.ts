@@ -19,6 +19,8 @@ function back(returnTo: string, kind: 'error' | 'message', text: string): never 
   url.searchParams.delete('error')
   url.searchParams.delete('message')
   url.searchParams.set(kind, text)
+  // Marca unica: hace que el calendario se reinicie con los datos nuevos y muestre el aviso
+  url.searchParams.set('t', Date.now().toString())
   redirect(url.pathname + url.search)
 }
 
