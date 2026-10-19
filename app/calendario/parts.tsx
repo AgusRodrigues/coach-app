@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { dayLabel, timeInTZ } from '@/lib/dates'
-import { createEvent, deleteEvent } from './actions'
+import { createEvent, deleteEvent, updateEvent } from './actions'
 
 export type CalEvent = {
   id: string
@@ -95,10 +95,8 @@ export function DayBlock({
             const rpe = doneByEvent.get(ev.id)
 
             return (
-              <li
-                key={ev.id}
-                className="flex items-start justify-between gap-3 rounded-xl bg-neutral-950 p-3"
-              >
+              <li key={ev.id} className="rounded-xl bg-neutral-950 p-3">
+                <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
                   <p className="text-xs text-neutral-400">
                     {timeInTZ(ev.starts_at)} a {timeInTZ(ev.ends_at)}
@@ -141,6 +139,101 @@ export function DayBlock({
                     ✕
                   </button>
                 </form>
+                </div>
+
+                <details className="mt-2 text-sm">
+                  <summary className="cursor-pointer text-neutral-400">Editar</summary>
+
+                  <form action={updateEvent} className="mt-3 space-y-3">
+                    <input type="hidden" name="id" value={ev.id} />
+                    <input type="hidden" name="return_to" value={returnTo} />
+
+                    <input
+                      name="title"
+                      required
+                      defaultValue={ev.title}
+                      aria-label="Título"
+                      className={inputClass}
+                    />
+
+                    <select
+                      name="kind"
+                      defaultValue={ev.kind}
+                      disabled={done}
+                      aria-label="Tipo de evento"
+                      className={`${inputClass} disabled:opacity-60`}
+                    >
+                      {Object.entries(KINDS).map(([value, k]) => (
+                        <option key={value} value={value}>
+                          {k.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="date"
+                      name="date"
+                      required
+                      defaultValue={day}
+                      aria-label="Fecha"
+                      className={inputClass}
+                    />
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="space-y-1 text-xs text-neutral-400">
+                        <span>Inicio</span>
+                        <input
+                          type="time"
+                          name="start"
+                          required
+                          defaultValue={timeInTZ(ev.starts_at)}
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="space-y-1 text-xs text-neutral-400">
+                        <span>Fin</span>
+                        <input
+                          type="time"
+                          name="end"
+                          required
+                          defaultValue={timeInTZ(ev.ends_at)}
+                          className={inputClass}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        name="planned"
+                        defaultChecked={ev.is_planned_training}
+                        disabled={done}
+                        className="h-4 w-4 accent-[var(--brand)]"
+                      />
+                      <span>Es un entrenamiento planificado</span>
+                    </label>
+
+                    <textarea
+                      name="notes"
+                      rows={2}
+                      defaultValue={ev.notes ?? ''}
+                      placeholder="Notas (opcional)"
+                      aria-label="Notas"
+                      className={inputClass}
+                    />
+
+                    {done && (
+                      <p className="text-xs text-neutral-500">
+                        Esta sesión ya está registrada. El tipo no se puede cambiar, y si
+                        cambiás el día o la hora, el registro se mueve con el evento.
+                      </p>
+                    )}
+
+                    <button className="w-full rounded-xl bg-brand p-3 font-semibold text-on-brand">
+                      Guardar cambios
+                    </button>
+                  </form>
+                </details>
               </li>
             )
           })}

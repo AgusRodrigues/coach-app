@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/server'
 import { addDays, isValidISO, isValidTime, toTimestamp } from '@/lib/dates'
 
 const KINDS = ['track', 'gym', 'daily_life', 'competition', 'other'] as const
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Solo se acepta volver a una ruta del calendario (evita redirecciones a otros sitios)
 function safeReturn(raw: FormDataEntryValue | null): string {
@@ -85,4 +86,89 @@ export async function deleteEvent(formData: FormData) {
   revalidatePath('/calendario')
   revalidatePath('/')
   back(returnTo, 'message', 'Evento borrado.')
+}
+
+export async function updateEvent(formData: FormData) {
+  const supabase = await createClient()
+  const returnTo = safeReturn(formData.get('return_to'))
+
+  const id = String(formData.get('id') ?? '')
+  const title = String(formData.get('title') ?? '').trim()
+  const kind = String(formData.get('kind') ?? '')
+  const date = String(formData.get('date') ?? '')
+  const start = String(formData.get('start') ?? '')
+  const end = String(formData.get('end') ?? '')
+  const notes = String(formData.get('notes') ?? '').trim() || null
+  const planned = formData.get('planned') === 'on'
+
+  if (!UUID.test(id)) back(returnTo, 'error', 'Evento no encontrado.')
+  if (!title) back(returnTo, 'error', 'Poné un título.')
+  if (!isValidISO(date) || !isValidTime(start) || !isValidTime(end)) {
+    back(returnTo, 'error', 'Revisá la fecha y las horas.')
+  }
+  if (end <= start) {
+    back(returnTo, 'error', 'La hora de fin tiene que ser posterior a la de inicio.')
+  }
+
+  // RLS: solo encuentra eventos propios
+  const { data: existing } = await supabase
+    .from('calendar_events')
+    .select('id, kind, is_planned_training')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (!existing) back(returnTo, 'error', 'No se encontró el evento.')
+
+  // ¿Ya hay una sesion registrada para este evento?
+  const { data: logs } = await supabase
+    .from('session_logs')
+    .select('id')
+    .eq('event_id', id)
+    .limit(1)
+  const hasSession = !!logs && logs.length > 0
+
+  // Con una sesion registrada, el tipo y la marca de "entreno planificado" no se tocan:
+  // la sesion (repeticiones de pista, series de gimnasio) depende de ellos.
+  if (!hasSession && !(KINDS as readonly string[]).includes(kind)) {
+    back(returnTo, 'error', 'Elegí un tipo de evento.')
+  }
+
+  const startsAt = toTimestamp(date, start)
+  const endsAt = toTimestamp(date, end)
+
+  const { error } = await supabase
+    .from('calendar_events')
+    .update({
+      title,
+      kind: hasSession ? existing!.kind : kind,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      is_planned_training: hasSession ? existing!.is_planned_training : planned,
+      notes,
+    })
+    .eq('id', id)
+
+  if (error) back(returnTo, 'error', 'No se pudo guardar el evento.')
+
+  // La sesion guarda la fecha del evento: si el evento se mueve, la sesion se mueve con el.
+  // Asi el calendario, el inicio y los graficos siguen mostrando el dia correcto.
+  if (hasSession) {
+    const { error: sessionError } = await supabase
+      .from('session_logs')
+      .update({ started_at: startsAt })
+      .eq('event_id', id)
+
+    if (sessionError) {
+      back(
+        returnTo,
+        'error',
+        'El evento se actualizó, pero no se pudo mover la sesión registrada. Revisá la fecha.'
+      )
+    }
+  }
+
+  revalidatePath('/calendario')
+  revalidatePath('/')
+  revalidatePath('/progreso')
+  back(returnTo, 'message', 'Evento actualizado.')
 }
