@@ -11,6 +11,7 @@ import {
   monthGrid,
   todayISO,
 } from '@/lib/dates'
+import { MONTHS_AROUND } from '@/lib/calendar-window'
 import type { CalComp, CalEvent } from './parts'
 import CalendarClient, { type CalEventDay } from './CalendarClient'
 
@@ -51,11 +52,11 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
     viewMonth = selected.slice(0, 7)
   }
 
-  // ---- Ventana de datos: el mes elegido, el anterior y el siguiente ----
+  // ---- Ventana de datos: el mes elegido y MONTHS_AROUND meses a cada lado ----
   // Con esto, cambiar de vista, de semana, de mes o de dia no necesita volver al servidor.
   const centerMonth = viewMonth
-  const winStart = monthGrid(addMonths(centerMonth, -1))[0]
-  const nextGrid = monthGrid(addMonths(centerMonth, 1))
+  const winStart = monthGrid(addMonths(centerMonth, -MONTHS_AROUND))[0]
+  const nextGrid = monthGrid(addMonths(centerMonth, MONTHS_AROUND))
   const winEnd = nextGrid[nextGrid.length - 1]
   const from = winStart
   const to = addDays(winEnd, 1)

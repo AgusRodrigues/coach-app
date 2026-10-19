@@ -11,6 +11,7 @@ import {
   monthLabel,
   shortDate,
 } from '@/lib/dates'
+import { MONTHS_AROUND } from '@/lib/calendar-window'
 import { DayBlock, KINDS, NewEventForm, type CalComp, type CalEvent } from './parts'
 
 // El servidor manda los datos de ~3 meses. Con esos datos, cambiar de vista, de semana,
@@ -87,8 +88,8 @@ export default function CalendarClient({
   function covered(t: Target): boolean {
     if (t.view === 'mes') {
       return (
-        t.viewMonth >= addMonths(centerMonth, -1) &&
-        t.viewMonth <= addMonths(centerMonth, 1) &&
+        t.viewMonth >= addMonths(centerMonth, -MONTHS_AROUND) &&
+        t.viewMonth <= addMonths(centerMonth, MONTHS_AROUND) &&
         t.selected >= winStart &&
         t.selected <= winEnd
       )
