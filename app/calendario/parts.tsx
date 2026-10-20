@@ -36,6 +36,17 @@ export const KINDS: Record<string, { label: string; badge: string; dot: string }
 const inputClass =
   'w-full rounded-xl border border-neutral-700 bg-neutral-800 p-3 text-neutral-100'
 
+// 0 = lunes ... 6 = domingo (el servidor usa los mismos numeros)
+const WEEKDAY_CHIPS = [
+  { value: 0, short: 'L', full: 'Lunes' },
+  { value: 1, short: 'M', full: 'Martes' },
+  { value: 2, short: 'X', full: 'Miércoles' },
+  { value: 3, short: 'J', full: 'Jueves' },
+  { value: 4, short: 'V', full: 'Viernes' },
+  { value: 5, short: 'S', full: 'Sábado' },
+  { value: 6, short: 'D', full: 'Domingo' },
+]
+
 // Un dia con sus eventos y competencias (se usa en la semana y en el detalle del mes)
 export function DayBlock({
   day,
@@ -303,8 +314,31 @@ export function NewEventForm({
           </label>
         </div>
 
+        <fieldset className="min-w-0 space-y-2">
+          <legend className="text-sm">Días de la semana</legend>
+          <div className="grid grid-cols-7 gap-1.5">
+            {WEEKDAY_CHIPS.map((d) => (
+              <label key={d.value} className="cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="days"
+                  value={d.value}
+                  aria-label={d.full}
+                  className="peer sr-only"
+                />
+                <span className="flex h-11 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800 text-sm font-medium transition-colors duration-150 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand">
+                  {d.short}
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-neutral-500">
+            Marcá uno o más días. Si no marcás ninguno, se usa el día de la fecha elegida.
+          </p>
+        </fieldset>
+
         <label className="block space-y-1 text-sm">
-          <span>Repetir semanalmente (cantidad de semanas)</span>
+          <span>Repetir durante (semanas)</span>
           <input
             type="number"
             name="repeat"
@@ -314,7 +348,8 @@ export function NewEventForm({
             className={inputClass}
           />
           <span className="block text-xs text-neutral-500">
-            1 es solo esta vez. Con 8, se carga el mismo día durante 8 semanas.
+            Cuenta la semana de la fecha elegida. Con 8 y los días martes y sábado, se cargan
+            ambos durante 8 semanas seguidas, desde la fecha de inicio.
           </span>
         </label>
 

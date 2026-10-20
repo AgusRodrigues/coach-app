@@ -3,10 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { addDays, isValidISO, isValidTime, toTimestamp } from '@/lib/dates'
+import { addDays, daysBetween, isValidISO, isValidTime, mondayOf, toTimestamp } from '@/lib/dates'
 
 const KINDS = ['track', 'gym', 'daily_life', 'competition', 'other'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
 
 // Solo se acepta volver a una ruta del calendario (evita redirecciones a otros sitios)
 function safeReturn(raw: FormDataEntryValue | null): string {
@@ -52,25 +53,62 @@ export async function createEvent(formData: FormData) {
     back(returnTo, 'error', 'La hora de fin tiene que ser posterior a la de inicio.')
   }
 
-  // Un evento por semana, con el mismo dia y horario
-  const rows = Array.from({ length: repeat }, (_, i) => {
-    const d = addDays(date, 7 * i)
-    return {
-      kind,
-      title,
-      starts_at: toTimestamp(d, start),
-      ends_at: toTimestamp(d, end),
-      is_planned_training: planned,
-      notes,
+  // ---- Dias de la semana (0 = lunes ... 6 = domingo) ----
+  // Si no se marca ninguno, se usa el dia de la fecha elegida: queda igual que antes
+  // (el mismo dia, repetido semana a semana).
+  const picked = [...new Set(formData.getAll('days').map((v) => Number(v)))]
+    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+    .sort((a, b) => a - b)
+  const weekdays = picked.length > 0 ? picked : [daysBetween(mondayOf(date), date)]
+
+  // Empieza en la semana de la fecha elegida. En cada semana se crea un evento por cada
+  // dia marcado, y se omiten los dias anteriores a la fecha elegida (no se crean eventos
+  // en el pasado).
+  const firstMonday = mondayOf(date)
+  const rows: {
+    kind: string
+    title: string
+    starts_at: string
+    ends_at: string
+    is_planned_training: boolean
+    notes: string | null
+  }[] = []
+
+  for (let week = 0; week < repeat; week++) {
+    for (const weekday of weekdays) {
+      const eventDate = addDays(firstMonday, 7 * week + weekday)
+      if (eventDate < date) continue
+
+      rows.push({
+        kind,
+        title,
+        starts_at: toTimestamp(eventDate, start),
+        ends_at: toTimestamp(eventDate, end),
+        is_planned_training: planned,
+        notes,
+      })
     }
-  })
+  }
+
+  if (rows.length === 0) {
+    back(
+      returnTo,
+      'error',
+      'Con esos días no queda ningún evento a partir de la fecha elegida. Probá con más semanas o con otra fecha de inicio.'
+    )
+  }
 
   const { error } = await supabase.from('calendar_events').insert(rows)
   if (error) back(returnTo, 'error', 'No se pudo guardar el evento.')
 
   revalidatePath('/calendario')
   revalidatePath('/')
-  back(returnTo, 'message', repeat > 1 ? `Se crearon ${repeat} eventos.` : 'Evento creado.')
+
+  const message =
+    rows.length === 1
+      ? 'Evento creado.'
+      : `Se crearon ${rows.length} eventos (${weekdays.map((d) => DAY_NAMES[d]).join(', ')}).`
+  back(returnTo, 'message', message)
 }
 
 export async function deleteEvent(formData: FormData) {
