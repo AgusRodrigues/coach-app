@@ -10,6 +10,7 @@ export type CalEvent = {
   ends_at: string
   is_planned_training: boolean
   notes: string | null
+  series_id: string | null
 }
 
 export type CalComp = {
@@ -35,6 +36,33 @@ export const KINDS: Record<string, { label: string; badge: string; dot: string }
 
 const inputClass =
   'w-full rounded-xl border border-neutral-700 bg-neutral-800 p-3 text-neutral-100'
+
+// A que eventos de una serie se aplica una edicion o un borrado
+const SCOPES = [
+  { value: 'this', label: 'Solo este evento' },
+  { value: 'following', label: 'Este y los siguientes' },
+  { value: 'all', label: 'Toda la serie' },
+]
+
+function ScopeRadios({ legend }: { legend: string }) {
+  return (
+    <fieldset className="min-w-0 space-y-2">
+      <legend className="text-xs text-neutral-400">{legend}</legend>
+      {SCOPES.map((s) => (
+        <label key={s.value} className="flex items-center gap-3">
+          <input
+            type="radio"
+            name="scope"
+            value={s.value}
+            defaultChecked={s.value === 'this'}
+            className="h-4 w-4 accent-[var(--brand)]"
+          />
+          <span>{s.label}</span>
+        </label>
+      ))}
+    </fieldset>
+  )
+}
 
 // 0 = lunes ... 6 = domingo (el servidor usa los mismos numeros)
 const WEEKDAY_CHIPS = [
@@ -122,6 +150,11 @@ export function DayBlock({
                         Entreno planificado
                       </span>
                     )}
+                    {ev.series_id && (
+                      <span className="rounded-full border border-neutral-600 px-2 py-0.5 text-neutral-300">
+                        Serie
+                      </span>
+                    )}
                   </div>
                   {ev.notes && <p className="text-sm text-neutral-400">{ev.notes}</p>}
 
@@ -140,16 +173,19 @@ export function DayBlock({
                     ))}
                 </div>
 
-                <form action={deleteEvent}>
-                  <input type="hidden" name="id" value={ev.id} />
-                  <input type="hidden" name="return_to" value={returnTo} />
-                  <button
-                    aria-label={`Borrar ${ev.title}`}
-                    className="rounded-lg px-2 py-1 text-neutral-500 hover:text-red-400"
-                  >
-                    ✕
-                  </button>
-                </form>
+                {/* Los eventos de una serie se borran desde "Editar", donde se elige el alcance */}
+                {!ev.series_id && (
+                  <form action={deleteEvent}>
+                    <input type="hidden" name="id" value={ev.id} />
+                    <input type="hidden" name="return_to" value={returnTo} />
+                    <button
+                      aria-label={`Borrar ${ev.title}`}
+                      className="rounded-lg px-2 py-1 text-neutral-500 hover:text-red-400"
+                    >
+                      ✕
+                    </button>
+                  </form>
+                )}
                 </div>
 
                 <details className="mt-2 text-sm">
@@ -240,10 +276,38 @@ export function DayBlock({
                       </p>
                     )}
 
+                    {ev.series_id && (
+                      <div className="space-y-2 rounded-xl bg-neutral-900 p-3">
+                        <ScopeRadios legend="Aplicar los cambios a" />
+                        <p className="text-xs text-neutral-500">
+                          Si cambiás el día, solo se mueven los eventos que caen el mismo día
+                          de la semana que este (por ejemplo, todos los martes). Los demás
+                          días de la serie no se tocan. Los eventos que ya tienen una sesión
+                          registrada tampoco se modifican.
+                        </p>
+                      </div>
+                    )}
+
                     <button className="w-full rounded-xl bg-brand p-3 font-semibold text-on-brand">
                       Guardar cambios
                     </button>
                   </form>
+
+                  {ev.series_id && (
+                    <form
+                      action={deleteEvent}
+                      className="mt-4 space-y-3 border-t border-neutral-700 pt-4"
+                    >
+                      <input type="hidden" name="id" value={ev.id} />
+                      <input type="hidden" name="return_to" value={returnTo} />
+                      <ScopeRadios legend="Borrar" />
+                      <p className="text-xs text-neutral-500">
+                        Los eventos que ya tienen una sesión registrada no se borran, para no
+                        perder tu historial.
+                      </p>
+                      <button className="font-medium text-red-400">Borrar</button>
+                    </form>
+                  )}
                 </details>
               </li>
             )

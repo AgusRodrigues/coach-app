@@ -67,7 +67,7 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
   const [eventsRes, compsRes, logsRes] = await Promise.all([
     supabase
       .from('calendar_events')
-      .select('id, kind, title, starts_at, ends_at, is_planned_training, notes')
+      .select('id, kind, title, starts_at, ends_at, is_planned_training, notes, series_id')
       .gte('starts_at', `${from}T00:00:00-03:00`)
       .lt('starts_at', `${to}T00:00:00-03:00`)
       .order('starts_at'),
