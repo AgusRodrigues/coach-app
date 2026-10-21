@@ -52,7 +52,7 @@ export async function signup(formData: FormData) {
   }
 
   revalidatePath('/', 'layout')
-  redirect('/')
+  redirect('/bienvenida')
 }
 
 export async function logout() {

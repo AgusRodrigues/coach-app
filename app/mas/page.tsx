@@ -47,6 +47,12 @@ async function MoreContent() {
       desc: 'Datos personales, peso y objetivos',
       badge: null,
     },
+    {
+      href: '/bienvenida',
+      title: 'Cómo funciona la app',
+      desc: 'Repasá el tutorial de bienvenida',
+      badge: null,
+    },
   ]
 
   return (

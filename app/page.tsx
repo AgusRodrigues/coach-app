@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { connection } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { addDays, dayLabel, daysBetween, mondayOf, timeInTZ, todayISO } from '@/lib/dates'
@@ -49,7 +50,7 @@ async function Dashboard() {
 
   const [profileRes, todayRes, weekRes, checkinRes, painRes, compRes, logsRes] =
     await Promise.all([
-    supabase.from('profiles').select('display_name').maybeSingle(),
+    supabase.from('profiles').select('display_name, onboarded_at').maybeSingle(),
     supabase
       .from('calendar_events')
       .select('id, kind, title, starts_at, ends_at, is_planned_training')
@@ -83,9 +84,17 @@ async function Dashboard() {
       .lt('started_at', `${nextMonday}T00:00:00-03:00`),
   ])
 
-  const name = (profileRes.data as { display_name: string | null } | null)?.display_name
-    ?.trim()
-    .split(/\s+/)[0]
+  const profile = profileRes.data as {
+    display_name: string | null
+    onboarded_at: string | null
+  } | null
+
+  // Primera vez en una cuenta: tutorial de bienvenida.
+  // Si la consulta falla (por ejemplo, si todavia no se corrio la migracion) o no hay
+  // perfil, no se redirige: asi la app nunca queda atrapada en un bucle.
+  if (!profileRes.error && profile && !profile.onboarded_at) redirect('/bienvenida')
+
+  const name = profile?.display_name?.trim().split(/\s+/)[0]
 
   const todayEvents = (todayRes.data ?? []) as Ev[]
   const weekIds = ((weekRes.data ?? []) as { id: string }[]).map((e) => e.id)
