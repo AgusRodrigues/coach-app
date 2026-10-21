@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
+import { timed } from '@/lib/timing'
 import {
   addDays,
   daysBetween,
@@ -322,6 +323,19 @@ export async function deleteEvent(formData: FormData) {
 
   if (!UUID.test(id)) back(returnTo, 'error', 'Evento no encontrado.')
 
+  // Borrar un solo evento no necesita leerlo antes: se borra directo (antes eran dos pasos
+  // seguidos). RLS garantiza que solo se pueden borrar eventos propios.
+  if (scope === 'this') {
+    const { error } = await timed(
+      'deleteEvent: borrar uno',
+      supabase.from('calendar_events').delete().eq('id', id)
+    )
+    refresh()
+    if (error) back(returnTo, 'error', 'No se pudo borrar el evento.')
+    back(returnTo, 'message', 'Evento borrado.')
+  }
+
+  // Varios eventos de una serie: hay que saber a cual pertenece
   // RLS: solo encuentra eventos propios
   const { data: existing } = await supabase
     .from('calendar_events')

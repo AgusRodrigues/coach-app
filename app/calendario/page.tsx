@@ -12,6 +12,7 @@ import {
   todayISO,
 } from '@/lib/dates'
 import { MONTHS_AROUND } from '@/lib/calendar-window'
+import { timed } from '@/lib/timing'
 import type { CalComp, CalEvent } from './parts'
 import CalendarClient, { type CalEventDay } from './CalendarClient'
 
@@ -64,7 +65,7 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
   // ---- Las tres consultas en paralelo (antes eran una detras de otra) ----
   const supabase = await createClient()
 
-  const [eventsRes, compsRes, logsRes] = await Promise.all([
+  const [eventsRes, compsRes, logsRes] = await timed('calendario: 3 consultas', Promise.all([
     supabase
       .from('calendar_events')
       .select('id, kind, title, starts_at, ends_at, is_planned_training, notes, series_id')
@@ -85,7 +86,7 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
       .not('event_id', 'is', null)
       .gte('started_at', `${from}T00:00:00-03:00`)
       .lt('started_at', `${to}T00:00:00-03:00`),
-  ])
+  ]))
 
   const events: CalEventDay[] = ((eventsRes.data ?? []) as CalEvent[]).map((ev) => ({
     ...ev,

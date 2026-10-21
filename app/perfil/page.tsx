@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { connection } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { timed } from '@/lib/timing'
 import { saveProfile } from './actions'
 
 type Params = Promise<{ error?: string; message?: string }>
@@ -34,19 +35,23 @@ async function ProfileForm({ searchParams }: { searchParams: Params }) {
   const { error, message } = await searchParams
   const supabase = await createClient()
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .maybeSingle()
-
-  const { data: lastMeasurement } = await supabase
-    .from('body_measurements')
-    .select('weight_kg')
-    .not('weight_kg', 'is', null)
-    .order('measured_on', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // Las dos consultas salen juntas (antes la segunda esperaba a la primera)
+  const [profileRes, measurementRes] = await timed(
+    'perfil: 2 consultas',
+    Promise.all([
+      supabase.from('profiles').select('*').maybeSingle(),
+      supabase
+        .from('body_measurements')
+        .select('weight_kg')
+        .not('weight_kg', 'is', null)
+        .order('measured_on', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+  )
+  const profile = profileRes.data
+  const lastMeasurement = measurementRes.data
 
   const lastWeight = lastMeasurement?.weight_kg ?? ''
 

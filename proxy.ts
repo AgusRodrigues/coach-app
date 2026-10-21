@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { timed } from '@/lib/timing'
 
 // Next.js 16+: este archivo se llama proxy.ts y la funcion proxy.
 // Si tu version de Next.js es anterior a la 16, renombralo a middleware.ts
@@ -30,7 +31,10 @@ export async function proxy(request: NextRequest) {
 
   // IMPORTANTE: no pongas codigo entre createServerClient y getClaims().
   // En el servidor usar siempre getClaims(), nunca getSession().
-  const { data } = await supabase.auth.getClaims()
+  const { data } = await timed(
+    `proxy: getClaims ${request.nextUrl.pathname}`,
+    supabase.auth.getClaims()
+  )
   const isLoggedIn = !!data?.claims
 
   const path = request.nextUrl.pathname
