@@ -352,7 +352,7 @@ export async function deleteEvent(formData: FormData) {
 
   // Al borrar varios eventos de una serie, los que ya tienen una sesion registrada se
   // conservan: asi no se pierde el historial de lo que ya hiciste.
-  if (scope !== 'this' && current.series_id) {
+  if (current.series_id) {
     const withSession = await idsWithSession(supabase, deletable)
     deletable = deletable.filter((x) => !withSession.has(x))
     kept = targets.length - deletable.length
