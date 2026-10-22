@@ -65,28 +65,58 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
   // ---- Las tres consultas en paralelo (antes eran una detras de otra) ----
   const supabase = await createClient()
 
-  const [eventsRes, compsRes, logsRes] = await timed('calendario: 3 consultas', Promise.all([
-    supabase
-      .from('calendar_events')
-      .select('id, kind, title, starts_at, ends_at, is_planned_training, notes, series_id')
-      .gte('starts_at', `${from}T00:00:00-03:00`)
-      .lt('starts_at', `${to}T00:00:00-03:00`)
-      .order('starts_at'),
-    supabase
-      .from('competitions')
-      .select('id, name, discipline, importance, event_date')
-      .gte('event_date', from)
-      .lt('event_date', to)
-      .order('event_date'),
-    // Las sesiones guardan la hora de inicio del evento: se buscan por fecha, sin depender de
-    // la consulta de eventos
-    supabase
-      .from('session_logs')
-      .select('event_id, rpe')
-      .not('event_id', 'is', null)
-      .gte('started_at', `${from}T00:00:00-03:00`)
-      .lt('started_at', `${to}T00:00:00-03:00`),
-  ]))
+  const debug = process.env.DEBUG_TIMING === '1'
+
+  // Con DEBUG_TIMING=1: una consulta minima de referencia (1 fila de una tabla chica) que sale
+  // a la vez que las otras. Dice cuanto cuesta, como minimo, hablar con Supabase.
+  const baseline = debug
+    ? timed(
+        'calendario: referencia (1 fila)',
+        supabase.from('body_zones').select('code').limit(1)
+      )
+    : null
+
+  const [eventsRes, compsRes, logsRes] = await timed(
+    'calendario: total',
+    Promise.all([
+      timed(
+        'calendario: eventos',
+        supabase
+          .from('calendar_events')
+          .select('id, kind, title, starts_at, ends_at, is_planned_training, notes, series_id')
+          .gte('starts_at', `${from}T00:00:00-03:00`)
+          .lt('starts_at', `${to}T00:00:00-03:00`)
+          .order('starts_at')
+      ),
+      timed(
+        'calendario: competencias',
+        supabase
+          .from('competitions')
+          .select('id, name, discipline, importance, event_date')
+          .gte('event_date', from)
+          .lt('event_date', to)
+          .order('event_date')
+      ),
+      // Las sesiones guardan la hora de inicio del evento: se buscan por fecha, sin depender
+      // de la consulta de eventos
+      timed(
+        'calendario: sesiones',
+        supabase
+          .from('session_logs')
+          .select('event_id, rpe')
+          .not('event_id', 'is', null)
+          .gte('started_at', `${from}T00:00:00-03:00`)
+          .lt('started_at', `${to}T00:00:00-03:00`)
+      ),
+    ])
+  )
+
+  if (baseline) {
+    await baseline
+    console.log(
+      `[timing] filas: eventos ${eventsRes.data?.length ?? 0}, competencias ${compsRes.data?.length ?? 0}, sesiones ${logsRes.data?.length ?? 0}`
+    )
+  }
 
   const events: CalEventDay[] = ((eventsRes.data ?? []) as CalEvent[]).map((ev) => ({
     ...ev,
