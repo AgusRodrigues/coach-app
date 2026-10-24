@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useOptimistic, useState } from 'react'
 import Link from 'next/link'
 import {
   addDays,
@@ -10,8 +10,23 @@ import {
   monthGrid,
   monthLabel,
   shortDate,
+  toTimestamp,
 } from '@/lib/dates'
 import { MONTHS_AROUND } from '@/lib/calendar-window'
+import {
+  isEventKind,
+  parseScope,
+  pickScope,
+  planCreateDates,
+  planDelete,
+  planUpdate,
+  readCreateExtras,
+  readEventInput,
+  validateEventInput,
+  type ActionResult,
+  type EventPatch,
+} from '@/lib/event-rules'
+import { createEvent, deleteEvent, updateEvent } from './actions'
 import { DayBlock, KINDS, NewEventForm, type CalComp, type CalEvent } from './parts'
 
 // El servidor manda los datos de ~3 meses. Con esos datos, cambiar de vista, de semana,
@@ -21,6 +36,34 @@ import { DayBlock, KINDS, NewEventForm, type CalComp, type CalEvent } from './pa
 type View = 'semana' | 'mes'
 type Target = { view: View; selected: string; viewMonth: string }
 export type CalEventDay = CalEvent & { day: string }
+
+type Notice = { kind: 'ok' | 'error'; text: string }
+
+// Cambios que se muestran al instante, antes de que el servidor confirme. Si el servidor
+// los rechaza, desaparecen solos y se vuelve a lo que habia.
+type OptimisticChange =
+  | { type: 'delete'; ids: string[] }
+  | { type: 'create'; rows: CalEventDay[] }
+  | { type: 'update'; patches: { id: string; patch: EventPatch }[] }
+
+function applyChange(state: CalEventDay[], change: OptimisticChange): CalEventDay[] {
+  switch (change.type) {
+    case 'delete': {
+      const gone = new Set(change.ids)
+      return state.filter((e) => !gone.has(e.id))
+    }
+    case 'create':
+      return [...state, ...change.rows]
+    case 'update': {
+      const byId = new Map(change.patches.map((p) => [p.id, p.patch]))
+      return state.map((e) => {
+        const patch = byId.get(e.id)
+        // starts_at lleva la fecha local de Buenos Aires: sus primeros 10 caracteres son el dia
+        return patch ? { ...e, ...patch, day: patch.starts_at.slice(0, 10) } : e
+      })
+    }
+  }
+}
 
 type Props = {
   initialView: View
@@ -68,13 +111,22 @@ export default function CalendarClient({
   const [selected, setSelected] = useState(initialSelected)
   const [viewMonth, setViewMonth] = useState(initialViewMonth)
   const [alertsVisible, setAlertsVisible] = useState(true)
+  const [notice, setNotice] = useState<Notice | null>(null)
+
+  // Los eventos que se muestran: los del servidor mas los cambios que todavia se estan guardando
+  const [shownEvents, applyChangeNow] = useOptimistic(events, applyChange)
 
   // ---- Datos indexados por dia ----
   const doneByEvent = new Map<string, number | null>(doneEntries)
+  const doneIds = new Set(doneByEvent.keys())
 
   const byDay = new Map<string, CalEventDay[]>()
-  for (const ev of events) {
+  for (const ev of shownEvents) {
     byDay.set(ev.day, [...(byDay.get(ev.day) ?? []), ev])
+  }
+  // Los eventos recien creados o cambiados se agregan al final: se ordenan por hora
+  for (const list of byDay.values()) {
+    list.sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
   }
   const compsByDay = new Map<string, CalComp[]>()
   for (const c of comps) {
@@ -82,7 +134,6 @@ export default function CalendarClient({
   }
 
   // ---- Navegacion ----
-  const current: Target = { view, selected, viewMonth }
 
   // ¿Los datos cargados alcanzan para mostrar ese estado?
   function covered(t: Target): boolean {
@@ -98,11 +149,111 @@ export default function CalendarClient({
     return monday >= winStart && addDays(monday, 6) <= winEnd
   }
 
+  // ---- Crear, editar y borrar: se ve al instante y se guarda por detras ----
+  // Cada funcion hace tres cosas: (1) valida y calcula el resultado con las MISMAS reglas que el
+  // servidor, (2) lo muestra ya, (3) manda el pedido. Si el servidor responde con un error, el
+  // cambio se deshace solo y se muestra el aviso.
+
+  // Manda el pedido al servidor y muestra el resultado. Si no hay conexion, el pedido falla con
+  // una excepcion: se atrapa, y el cambio mostrado se deshace solo (queda el aviso).
+  async function send(run: () => Promise<ActionResult>) {
+    try {
+      const res = await run()
+      setNotice(res.ok ? { kind: 'ok', text: res.message } : { kind: 'error', text: res.error })
+    } catch {
+      setNotice({
+        kind: 'error',
+        text: 'No se pudo conectar con el servidor, así que el cambio se deshizo. Revisá tu conexión y probá de nuevo.',
+      })
+    }
+  }
+
+  async function handleCreate(fd: FormData) {
+    setNotice(null)
+    const input = readEventInput(fd)
+    const { repeat, weekdays } = readCreateExtras(fd)
+
+    const invalid = validateEventInput(input) ?? (isEventKind(input.kind) ? null : 'Elegí un tipo de evento.')
+    if (invalid) return setNotice({ kind: 'error', text: invalid })
+
+    const dates = planCreateDates(input.date, weekdays, repeat)
+    if (dates.length === 0) {
+      return setNotice({
+        kind: 'error',
+        text: 'Con esos días no queda ningún evento a partir de la fecha elegida. Probá con más semanas o con otra fecha de inicio.',
+      })
+    }
+
+    const tempSeries = dates.length > 1 ? `tmp-${crypto.randomUUID()}` : null
+    applyChangeNow({
+      type: 'create',
+      rows: dates.map((d) => ({
+        id: `tmp-${crypto.randomUUID()}`,
+        kind: input.kind,
+        title: input.title,
+        starts_at: toTimestamp(d, input.start),
+        ends_at: toTimestamp(d, input.end),
+        is_planned_training: input.planned,
+        notes: input.notes,
+        series_id: tempSeries,
+        day: d,
+      })),
+    })
+
+    await send(() => createEvent(fd))
+  }
+
+  async function handleUpdate(fd: FormData) {
+    setNotice(null)
+    const id = String(fd.get('id') ?? '')
+    const scope = parseScope(fd.get('scope'))
+    const input = readEventInput(fd)
+
+    const found = shownEvents.find((e) => e.id === id)
+    if (!found) return
+    const invalid = validateEventInput(input)
+    if (invalid) return setNotice({ kind: 'error', text: invalid })
+
+    const targets = pickScope(shownEvents, found, scope)
+    const plan = planUpdate(found, targets, doneIds, input)
+    if (!plan.ok) return setNotice({ kind: 'error', text: plan.error })
+
+    applyChangeNow({
+      type: 'update',
+      patches: plan.patches.map(({ id: eventId, patch }) => ({ id: eventId, patch })),
+    })
+
+    await send(() => updateEvent(fd))
+  }
+
+  async function handleDelete(fd: FormData) {
+    setNotice(null)
+    const id = String(fd.get('id') ?? '')
+    const scope = parseScope(fd.get('scope'))
+
+    const found = shownEvents.find((e) => e.id === id)
+    if (!found) return
+
+    const targets = pickScope(shownEvents, found, scope)
+    const { ids } = planDelete(found, targets, scope, doneIds)
+    if (ids.length === 0) {
+      return setNotice({
+        kind: 'error',
+        text: 'Esos eventos ya tienen una sesión registrada, así que se conservaron.',
+      })
+    }
+
+    applyChangeNow({ type: 'delete', ids })
+
+    await send(() => deleteEvent(fd))
+  }
+
   function go(t: Target) {
     setView(t.view)
     setSelected(t.selected)
     setViewMonth(t.viewMonth)
     setAlertsVisible(false)
+    setNotice(null)
     // Actualiza la direccion sin recargar: asi, recargar o guardar un evento vuelve a este lugar
     window.history.replaceState(null, '', hrefFor(t))
   }
@@ -141,7 +292,6 @@ export default function CalendarClient({
 
   const isMonth = view === 'mes'
   const grid = isMonth ? monthGrid(viewMonth) : []
-  const returnTo = hrefFor(current)
 
   return (
     <div className="space-y-4">
@@ -246,16 +396,31 @@ export default function CalendarClient({
         </div>
       )}
 
-      {alertsVisible && error && (
-        <p role="alert" className="rounded-xl bg-red-950 p-3 text-sm text-red-300">
-          {error}
-        </p>
-      )}
-      {alertsVisible && message && (
-        <p className="rounded-xl bg-emerald-950 p-3 text-sm text-emerald-300">{message}</p>
-      )}
+      {/* Aviso del ultimo cambio; si no hay, el que llego en la direccion (por ejemplo, al
+          volver de guardar una sesion) */}
+      {(() => {
+        const shown: Notice | null =
+          notice ??
+          (alertsVisible
+            ? error
+              ? { kind: 'error', text: error }
+              : message
+                ? { kind: 'ok', text: message }
+                : null
+            : null)
+        if (!shown) return null
+        return shown.kind === 'error' ? (
+          <p role="alert" className="rounded-xl bg-red-950 p-3 text-sm text-red-300">
+            {shown.text}
+          </p>
+        ) : (
+          <p role="status" className="rounded-xl bg-emerald-950 p-3 text-sm text-emerald-300">
+            {shown.text}
+          </p>
+        )
+      })()}
 
-      <NewEventForm defaultDate={selected} returnTo={returnTo} />
+      <NewEventForm defaultDate={selected} onCreate={handleCreate} />
 
       {isMonth ? (
         <>
@@ -334,7 +499,8 @@ export default function CalendarClient({
             events={byDay.get(selected) ?? []}
             comps={compsByDay.get(selected) ?? []}
             doneByEvent={doneByEvent}
-            returnTo={returnTo}
+            onUpdate={handleUpdate}
+            onDelete={handleDelete}
           />
         </>
       ) : (
@@ -346,7 +512,8 @@ export default function CalendarClient({
             events={byDay.get(day) ?? []}
             comps={compsByDay.get(day) ?? []}
             doneByEvent={doneByEvent}
-            returnTo={returnTo}
+            onUpdate={handleUpdate}
+            onDelete={handleDelete}
           />
         ))
       )}

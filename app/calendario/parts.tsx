@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import { dayLabel, timeInTZ } from '@/lib/dates'
-import { createEvent, deleteEvent, updateEvent } from './actions'
+
+// Los formularios no llaman al servidor directamente: reciben funciones del calendario, que
+// primero muestran el cambio al instante y despues lo guardan (ver CalendarClient).
+export type FormAction = (formData: FormData) => void | Promise<void>
 
 export type CalEvent = {
   id: string
@@ -82,7 +85,8 @@ export function DayBlock({
   events,
   comps,
   doneByEvent,
-  returnTo,
+  onUpdate,
+  onDelete,
   animateIn = false,
 }: {
   day: string
@@ -90,7 +94,8 @@ export function DayBlock({
   events: CalEvent[]
   comps: CalComp[]
   doneByEvent: Map<string, number | null>
-  returnTo: string
+  onUpdate: FormAction
+  onDelete: FormAction
   animateIn?: boolean
 }) {
   const isToday = day === today
@@ -132,6 +137,8 @@ export function DayBlock({
             const kind = KINDS[ev.kind] ?? KINDS.other
             const done = doneByEvent.has(ev.id)
             const rpe = doneByEvent.get(ev.id)
+            // Un evento recien creado, que el servidor todavia esta guardando
+            const pending = ev.id.startsWith('tmp-')
 
             return (
               <li key={ev.id} className="rounded-xl bg-neutral-950 p-3">
@@ -157,8 +164,10 @@ export function DayBlock({
                     )}
                   </div>
                   {ev.notes && <p className="text-sm text-neutral-400">{ev.notes}</p>}
+                  {pending && <p className="text-xs text-neutral-500">Guardando…</p>}
 
                   {ev.is_planned_training &&
+                    !pending &&
                     (done ? (
                       <p className="pt-1 text-sm font-medium text-emerald-300">
                         ✓ Registrada{rpe != null && `, RPE ${rpe}`}
@@ -174,10 +183,9 @@ export function DayBlock({
                 </div>
 
                 {/* Los eventos de una serie se borran desde "Editar", donde se elige el alcance */}
-                {!ev.series_id && (
-                  <form action={deleteEvent}>
+                {!ev.series_id && !pending && (
+                  <form action={onDelete}>
                     <input type="hidden" name="id" value={ev.id} />
-                    <input type="hidden" name="return_to" value={returnTo} />
                     <button
                       aria-label={`Borrar ${ev.title}`}
                       className="rounded-lg px-2 py-1 text-neutral-500 hover:text-red-400"
@@ -188,12 +196,12 @@ export function DayBlock({
                 )}
                 </div>
 
+                {!pending && (
                 <details className="mt-2 text-sm">
                   <summary className="cursor-pointer text-neutral-400">Editar</summary>
 
-                  <form action={updateEvent} className="mt-3 space-y-3">
+                  <form action={onUpdate} className="mt-3 space-y-3">
                     <input type="hidden" name="id" value={ev.id} />
-                    <input type="hidden" name="return_to" value={returnTo} />
 
                     <input
                       name="title"
@@ -295,11 +303,10 @@ export function DayBlock({
 
                   {ev.series_id && (
                     <form
-                      action={deleteEvent}
+                      action={onDelete}
                       className="mt-4 space-y-3 border-t border-neutral-700 pt-4"
                     >
                       <input type="hidden" name="id" value={ev.id} />
-                      <input type="hidden" name="return_to" value={returnTo} />
                       <ScopeRadios legend="Borrar" />
                       <p className="text-xs text-neutral-500">
                         Los eventos que ya tienen una sesión registrada no se borran, para no
@@ -309,6 +316,7 @@ export function DayBlock({
                     </form>
                   )}
                 </details>
+                )}
               </li>
             )
           })}
@@ -320,17 +328,16 @@ export function DayBlock({
 
 export function NewEventForm({
   defaultDate,
-  returnTo,
+  onCreate,
 }: {
   defaultDate: string
-  returnTo: string
+  onCreate: FormAction
 }) {
   return (
     <details className="rounded-2xl bg-neutral-900 p-4">
       <summary className="cursor-pointer font-semibold">+ Nuevo evento</summary>
 
-      <form action={createEvent} className="mt-4 space-y-3">
-        <input type="hidden" name="return_to" value={returnTo} />
+      <form action={onCreate} className="mt-4 space-y-3">
 
         <input
           name="title"

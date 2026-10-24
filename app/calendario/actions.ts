@@ -1,50 +1,37 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import { timed } from '@/lib/timing'
+import { toTimestamp } from '@/lib/dates'
 import {
-  addDays,
-  daysBetween,
-  isValidISO,
-  isValidTime,
-  isoDateInTZ,
-  mondayOf,
-  toTimestamp,
-} from '@/lib/dates'
+  DAY_NAMES,
+  isEventKind,
+  parseScope,
+  planCreateDates,
+  planDelete,
+  planUpdate,
+  readCreateExtras,
+  readEventInput,
+  resolveWeekdays,
+  validateEventInput,
+  type ActionResult,
+  type EventLike,
+  type Scope,
+} from '@/lib/event-rules'
 
-const KINDS = ['track', 'gym', 'daily_life', 'competition', 'other'] as const
+// Estas acciones NO redirigen: devuelven un resultado. El calendario ya mostro el cambio al
+// instante (en el telefono); aca se guarda de verdad, y si algo falla el telefono lo deshace.
+// Las reglas (que fechas, que se mueve, que se protege) viven en lib/event-rules.ts y las
+// comparten el servidor y el telefono.
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
 
 // PostgREST pone la lista de ids en la direccion de la consulta: se pide de a tandas
 const CHUNK = 50
 
-// A que eventos de una serie se aplica la accion
-type Scope = 'this' | 'following' | 'all'
-
-function parseScope(raw: FormDataEntryValue | null): Scope {
-  const s = String(raw ?? '')
-  return s === 'following' || s === 'all' ? s : 'this'
-}
-
-// Solo se acepta volver a una ruta del calendario (evita redirecciones a otros sitios)
-function safeReturn(raw: FormDataEntryValue | null): string {
-  const s = String(raw ?? '')
-  return s === '/calendario' || s.startsWith('/calendario?') ? s : '/calendario'
-}
-
-// Vuelve a la misma vista (semana o mes) agregando el mensaje o el error
-function back(returnTo: string, kind: 'error' | 'message', text: string): never {
-  const url = new URL(returnTo, 'http://local')
-  url.searchParams.delete('error')
-  url.searchParams.delete('message')
-  url.searchParams.set(kind, text)
-  // Marca unica: hace que el calendario se reinicie con los datos nuevos y muestre el aviso
-  url.searchParams.set('t', Date.now().toString())
-  redirect(url.pathname + url.search)
-}
+const fail = (error: string): ActionResult => ({ ok: false, error })
+const ok = (message: string): ActionResult => ({ ok: true, message })
 
 function refresh() {
   revalidatePath('/calendario')
@@ -59,14 +46,6 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 type Supa = Awaited<ReturnType<typeof createClient>>
-
-type SeriesEvent = {
-  id: string
-  starts_at: string
-  kind: string
-  is_planned_training: boolean
-  series_id: string | null
-}
 
 // De los ids dados, cuales ya tienen una sesion registrada
 async function idsWithSession(supabase: Supa, ids: string[]): Promise<Set<string>> {
@@ -83,9 +62,9 @@ async function idsWithSession(supabase: Supa, ids: string[]): Promise<Set<string
 // Eventos a los que aplica la accion: solo este, este y los siguientes, o toda la serie
 async function eventsInScope(
   supabase: Supa,
-  current: SeriesEvent,
+  current: EventLike,
   scope: Scope
-): Promise<SeriesEvent[]> {
+): Promise<EventLike[]> {
   if (scope === 'this' || !current.series_id) return [current]
 
   let query = supabase
@@ -96,61 +75,23 @@ async function eventsInScope(
   if (scope === 'following') query = query.gte('starts_at', current.starts_at)
 
   const { data } = await query
-  const list = (data ?? []) as SeriesEvent[]
+  const list = (data ?? []) as EventLike[]
   return list.length > 0 ? list : [current]
 }
 
-export async function createEvent(formData: FormData) {
+export async function createEvent(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient()
-  const returnTo = safeReturn(formData.get('return_to'))
 
-  const title = String(formData.get('title') ?? '').trim()
-  const kind = String(formData.get('kind') ?? '')
-  const date = String(formData.get('date') ?? '')
-  const start = String(formData.get('start') ?? '')
-  const end = String(formData.get('end') ?? '')
-  const notes = String(formData.get('notes') ?? '').trim() || null
-  const planned = formData.get('planned') === 'on'
-  const repeat = Math.min(
-    Math.max(parseInt(String(formData.get('repeat') ?? '1'), 10) || 1, 1),
-    26
-  )
+  const input = readEventInput(formData)
+  const { repeat, weekdays } = readCreateExtras(formData)
 
-  if (!title) back(returnTo, 'error', 'Poné un título.')
-  if (!(KINDS as readonly string[]).includes(kind)) {
-    back(returnTo, 'error', 'Elegí un tipo de evento.')
-  }
-  if (!isValidISO(date) || !isValidTime(start) || !isValidTime(end)) {
-    back(returnTo, 'error', 'Revisá la fecha y las horas.')
-  }
-  if (end <= start) {
-    back(returnTo, 'error', 'La hora de fin tiene que ser posterior a la de inicio.')
-  }
+  const invalid = validateEventInput(input)
+  if (invalid) return fail(invalid)
+  if (!isEventKind(input.kind)) return fail('Elegí un tipo de evento.')
 
-  // ---- Dias de la semana (0 = lunes ... 6 = domingo) ----
-  // Si no se marca ninguno, se usa el dia de la fecha elegida: queda igual que antes
-  // (el mismo dia, repetido semana a semana).
-  const picked = [...new Set(formData.getAll('days').map((v) => Number(v)))]
-    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
-    .sort((a, b) => a - b)
-  const weekdays = picked.length > 0 ? picked : [daysBetween(mondayOf(date), date)]
-
-  // Empieza en la semana de la fecha elegida. En cada semana se crea un evento por cada
-  // dia marcado, y se omiten los dias anteriores a la fecha elegida (no se crean eventos
-  // en el pasado).
-  const firstMonday = mondayOf(date)
-  const dates: string[] = []
-  for (let week = 0; week < repeat; week++) {
-    for (const weekday of weekdays) {
-      const eventDate = addDays(firstMonday, 7 * week + weekday)
-      if (eventDate >= date) dates.push(eventDate)
-    }
-  }
-
+  const dates = planCreateDates(input.date, weekdays, repeat)
   if (dates.length === 0) {
-    back(
-      returnTo,
-      'error',
+    return fail(
       'Con esos días no queda ningún evento a partir de la fecha elegida. Probá con más semanas o con otra fecha de inicio.'
     )
   }
@@ -159,49 +100,35 @@ export async function createEvent(formData: FormData) {
   const seriesId = dates.length > 1 ? crypto.randomUUID() : null
 
   const rows = dates.map((d) => ({
-    kind,
-    title,
-    starts_at: toTimestamp(d, start),
-    ends_at: toTimestamp(d, end),
-    is_planned_training: planned,
-    notes,
+    kind: input.kind,
+    title: input.title,
+    starts_at: toTimestamp(d, input.start),
+    ends_at: toTimestamp(d, input.end),
+    is_planned_training: input.planned,
+    notes: input.notes,
     series_id: seriesId,
   }))
 
   const { error } = await supabase.from('calendar_events').insert(rows)
-  if (error) back(returnTo, 'error', 'No se pudo guardar el evento.')
+  if (error) return fail('No se pudo guardar el evento.')
 
   refresh()
 
-  const message =
-    rows.length === 1
-      ? 'Evento creado.'
-      : `Se crearon ${rows.length} eventos (${weekdays.map((d) => DAY_NAMES[d]).join(', ')}).`
-  back(returnTo, 'message', message)
+  if (rows.length === 1) return ok('Evento creado.')
+  const names = resolveWeekdays(input.date, weekdays).map((d) => DAY_NAMES[d])
+  return ok(`Se crearon ${rows.length} eventos (${names.join(', ')}).`)
 }
 
-export async function updateEvent(formData: FormData) {
+export async function updateEvent(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient()
-  const returnTo = safeReturn(formData.get('return_to'))
 
   const id = String(formData.get('id') ?? '')
-  const title = String(formData.get('title') ?? '').trim()
-  const kind = String(formData.get('kind') ?? '')
-  const date = String(formData.get('date') ?? '')
-  const start = String(formData.get('start') ?? '')
-  const end = String(formData.get('end') ?? '')
-  const notes = String(formData.get('notes') ?? '').trim() || null
-  const planned = formData.get('planned') === 'on'
   const scope = parseScope(formData.get('scope'))
+  const input = readEventInput(formData)
 
-  if (!UUID.test(id)) back(returnTo, 'error', 'Evento no encontrado.')
-  if (!title) back(returnTo, 'error', 'Poné un título.')
-  if (!isValidISO(date) || !isValidTime(start) || !isValidTime(end)) {
-    back(returnTo, 'error', 'Revisá la fecha y las horas.')
-  }
-  if (end <= start) {
-    back(returnTo, 'error', 'La hora de fin tiene que ser posterior a la de inicio.')
-  }
+  if (!UUID.test(id)) return fail('Evento no encontrado.')
+  const invalid = validateEventInput(input)
+  if (invalid) return fail(invalid)
 
   // RLS: solo encuentra eventos propios
   const { data: existing } = await supabase
@@ -210,129 +137,77 @@ export async function updateEvent(formData: FormData) {
     .eq('id', id)
     .maybeSingle()
 
-  if (!existing) back(returnTo, 'error', 'No se encontró el evento.')
-  const current = existing as SeriesEvent
+  if (!existing) return fail('No se encontró el evento.')
+  const current = existing as EventLike
 
   const targets = await eventsInScope(supabase, current, scope)
-
-  // Los eventos con una sesion registrada conservan su tipo y su marca de "planificado":
-  // la sesion (repeticiones de pista, series de gimnasio) depende de ellos.
   const withSession = await idsWithSession(
     supabase,
     targets.map((t) => t.id)
   )
 
-  // Un cambio masivo no toca los eventos que ya tienen una sesion registrada: es historial
-  // de lo que hiciste. Para corregir uno de esos, se edita ese evento solo.
-  const bulk = targets.length > 1
-  const editable = bulk ? targets.filter((t) => !withSession.has(t.id)) : targets
-  const skipped = targets.length - editable.length
-
-  if (editable.length === 0) {
-    back(
-      returnTo,
-      'error',
-      'Esos eventos ya tienen una sesión registrada, así que no se modificaron. Para corregir uno, editá solo ese evento.'
-    )
-  }
-
-  if (editable.some((t) => !withSession.has(t.id)) && !(KINDS as readonly string[]).includes(kind)) {
-    back(returnTo, 'error', 'Elegí un tipo de evento.')
-  }
-
-  // Si cambia el dia, se mueven solo los eventos que caen el mismo dia de la semana que
-  // este (por ejemplo, todos los martes de una serie de martes y sabado), y los demas
-  // conservan su fecha. Para un solo evento, equivale a ponerle la fecha elegida.
-  const currentDay = isoDateInTZ(current.starts_at)
-  const currentWeekday = daysBetween(mondayOf(currentDay), currentDay)
-  const delta = daysBetween(currentDay, date)
-
-  // Correr una serie justo una o mas semanas pisaria eventos de la propia serie
-  if (targets.length > 1 && delta !== 0 && delta % 7 === 0) {
-    back(
-      returnTo,
-      'error',
-      'Para cambiar el día de una serie, elegí otro día de la semana. Para mover un solo evento a otra semana, editá solo ese evento.'
-    )
-  }
+  // Que se le cambia a cada evento (la misma funcion que usa el telefono)
+  const plan = planUpdate(current, targets, withSession, input)
+  if (!plan.ok) return fail(plan.error)
 
   let failures = 0
-  for (const part of chunk(editable, 25)) {
+  for (const part of chunk(plan.patches, 25)) {
     const results = await Promise.all(
-      part.map(async (t) => {
-        const tDay = isoDateInTZ(t.starts_at)
-        const sameWeekday = daysBetween(mondayOf(tDay), tDay) === currentWeekday
-        const day = sameWeekday ? addDays(tDay, delta) : tDay
-        const startsAt = toTimestamp(day, start)
-        const endsAt = toTimestamp(day, end)
-        const locked = withSession.has(t.id)
-
-        const { error } = await supabase
-          .from('calendar_events')
-          .update({
-            title,
-            kind: locked ? t.kind : kind,
-            starts_at: startsAt,
-            ends_at: endsAt,
-            is_planned_training: locked ? t.is_planned_training : planned,
-            notes,
-          })
-          .eq('id', t.id)
+      part.map(async ({ id: eventId, patch, locked }) => {
+        const { error } = await supabase.from('calendar_events').update(patch).eq('id', eventId)
         if (error) return false
 
         // La sesion guarda la fecha del evento: si el evento se mueve, la sesion se mueve con el
+        // (solo pasa al editar un unico evento ya registrado)
         if (locked) {
           const { error: sessionError } = await supabase
             .from('session_logs')
-            .update({ started_at: startsAt })
-            .eq('event_id', t.id)
+            .update({ started_at: patch.starts_at })
+            .eq('event_id', eventId)
           if (sessionError) return false
         }
         return true
       })
     )
-    failures += results.filter((ok) => !ok).length
+    failures += results.filter((done) => !done).length
   }
 
   refresh()
 
   if (failures > 0) {
-    back(
-      returnTo,
-      'error',
-      failures === editable.length
+    return fail(
+      failures === plan.patches.length
         ? 'No se pudo guardar el evento.'
-        : `No se pudieron actualizar ${failures} de ${editable.length} eventos. Revisá el calendario.`
+        : `No se pudieron actualizar ${failures} de ${plan.patches.length} eventos. Revisá el calendario.`
     )
   }
 
-  let message =
-    editable.length === 1 ? 'Evento actualizado.' : `Se actualizaron ${editable.length} eventos de la serie.`
-  if (skipped > 0) {
-    message += ` ${skipped} ya ${skipped === 1 ? 'tenía' : 'tenían'} una sesión registrada y no se ${skipped === 1 ? 'modificó' : 'modificaron'}.`
+  const count = plan.patches.length
+  let message = count === 1 ? 'Evento actualizado.' : `Se actualizaron ${count} eventos de la serie.`
+  if (plan.skipped > 0) {
+    const n = plan.skipped
+    message += ` ${n} ya ${n === 1 ? 'tenía' : 'tenían'} una sesión registrada y no se ${n === 1 ? 'modificó' : 'modificaron'}.`
   }
-  back(returnTo, 'message', message)
+  return ok(message)
 }
 
-export async function deleteEvent(formData: FormData) {
+export async function deleteEvent(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient()
-  const returnTo = safeReturn(formData.get('return_to'))
 
   const id = String(formData.get('id') ?? '')
   const scope = parseScope(formData.get('scope'))
 
-  if (!UUID.test(id)) back(returnTo, 'error', 'Evento no encontrado.')
+  if (!UUID.test(id)) return fail('Evento no encontrado.')
 
-  // Borrar un solo evento no necesita leerlo antes: se borra directo (antes eran dos pasos
-  // seguidos). RLS garantiza que solo se pueden borrar eventos propios.
+  // Borrar un solo evento no necesita leerlo antes: se borra directo.
+  // RLS garantiza que solo se pueden borrar eventos propios.
   if (scope === 'this') {
     const { error } = await timed(
       'deleteEvent: borrar uno',
       supabase.from('calendar_events').delete().eq('id', id)
     )
     refresh()
-    if (error) back(returnTo, 'error', 'No se pudo borrar el evento.')
-    back(returnTo, 'message', 'Evento borrado.')
+    return error ? fail('No se pudo borrar el evento.') : ok('Evento borrado.')
   }
 
   // Varios eventos de una serie: hay que saber a cual pertenece
@@ -343,42 +218,35 @@ export async function deleteEvent(formData: FormData) {
     .eq('id', id)
     .maybeSingle()
 
-  if (!existing) back(returnTo, 'error', 'No se encontró el evento.')
-  const current = existing as SeriesEvent
+  if (!existing) return fail('No se encontró el evento.')
+  const current = existing as EventLike
 
   const targets = await eventsInScope(supabase, current, scope)
-  let deletable = targets.map((t) => t.id)
-  let kept = 0
+  const withSession = await idsWithSession(
+    supabase,
+    targets.map((t) => t.id)
+  )
 
-  // Al borrar varios eventos de una serie, los que ya tienen una sesion registrada se
-  // conservan: asi no se pierde el historial de lo que ya hiciste.
-  if (current.series_id) {
-    const withSession = await idsWithSession(supabase, deletable)
-    deletable = deletable.filter((x) => !withSession.has(x))
-    kept = targets.length - deletable.length
+  // Los que ya tienen una sesion registrada se conservan: no se pierde el historial
+  const { ids, kept } = planDelete(current, targets, scope, withSession)
+
+  if (ids.length === 0) {
+    return fail('Esos eventos ya tienen una sesión registrada, así que se conservaron.')
   }
 
-  if (deletable.length === 0) {
-    back(
-      returnTo,
-      'error',
-      'Esos eventos ya tienen una sesión registrada, así que se conservaron.'
-    )
-  }
-
-  for (const part of chunk(deletable, CHUNK)) {
+  for (const part of chunk(ids, CHUNK)) {
     const { error } = await supabase.from('calendar_events').delete().in('id', part)
     if (error) {
       refresh()
-      back(returnTo, 'error', 'No se pudieron borrar todos los eventos. Revisá el calendario.')
+      return fail('No se pudieron borrar todos los eventos. Revisá el calendario.')
     }
   }
 
   refresh()
 
-  let message = deletable.length === 1 ? 'Evento borrado.' : `Se borraron ${deletable.length} eventos.`
+  let message = ids.length === 1 ? 'Evento borrado.' : `Se borraron ${ids.length} eventos.`
   if (kept > 0) {
     message += ` ${kept} ya ${kept === 1 ? 'tenía' : 'tenían'} una sesión registrada y se ${kept === 1 ? 'conservó' : 'conservaron'}.`
   }
-  back(returnTo, 'message', message)
+  return ok(message)
 }

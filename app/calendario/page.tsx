@@ -140,7 +140,7 @@ async function CalendarContent({ searchParams }: { searchParams: Params }) {
       {/* La clave hace que, al navegar a otro tramo desde el servidor, el componente
           arranque de cero con los datos nuevos */}
       <CalendarClient
-        key={`${centerMonth}|${view}|${selected}|${t ?? ''}`}
+        key={`${centerMonth}|${t ?? ''}`}
         initialView={view}
         initialSelected={selected}
         initialViewMonth={viewMonth}
